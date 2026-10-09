@@ -203,7 +203,7 @@ test('scoring: multi-line clears grow quadratically', () => {
   assert.equal(two.score, (80 + 20) * 4);
 });
 
-test('tools: silk resets each order, iron grows per clear', () => {
+test('tools: silk resets at each order start', () => {
   const run = R.newRun({ seed: 11 });
   run.tools.push(makeTool('silk'), makeTool('iron'));
   run.tools[0].data.chips = 99;
@@ -268,4 +268,150 @@ test('unlocks: locked tools never appear in gifts or the shop', async () => {
       R.reroll(run);
     }
   }
+});
+
+// ---------- helpers for deterministic board setups ----------
+const { idx: bidx } = await import('../src/core/board.js');
+function setRow(run, r, color, except = -1) {
+  for (let c = 0; c < 8; c++) if (c !== except) run.board[bidx(r, c)] = color;
+}
+function playing(seed = 1) {
+  const run = R.newRun({ seed });
+  R.beginOrder(run);
+  run.order.target = 1e9;
+  return run;
+}
+
+test('streak: grows on consecutive clears, breaks after STREAK_GRACE quiet placements, preview agrees', () => {
+  const run = playing(3);
+  run.tray = [{ shape: 'dot_0', color: 'red' }, { shape: 'dot_0', color: 'red' }, { shape: 'dot_0', color: 'red' }];
+  setRow(run, 0, 'blue', 7);
+  setRow(run, 1, 'blue', 7);
+  R.place(run, 0, 0, 7);
+  assert.equal(run.order.streak, 1);
+  R.place(run, 1, 1, 7);
+  assert.equal(run.order.streak, 2);
+  // quiet placements
+  for (let k = 0; k < R.STREAK_GRACE; k++) {
+    run.tray = [{ shape: 'dot_0', color: 'red' }, null, null];
+    const pv = R.preview(run, 0, 7, k);
+    const shouldBreak = k === R.STREAK_GRACE - 1;
+    assert.equal(pv.streakBreaks, shouldBreak);
+    R.place(run, 0, 7, k);
+    assert.equal(run.order.streak, shouldBreak ? 0 : 2);
+  }
+});
+
+test('preview equals place with growing tools (silk, iron) owned', () => {
+  for (let seed = 1; seed <= 15; seed++) {
+    const run = playing(seed);
+    run.tools = [makeTool('silk'), makeTool('iron'), makeTool('spool')];
+    for (let step = 0; step < 12 && run.phase === 'play'; step++) {
+      let mv = null;
+      run.tray.forEach((p, i) => { if (!p || mv) return; for (let r = 0; r < 8 && !mv; r++) for (let c = 0; c < 8 && !mv; c++) if (R.preview(run, i, r, c)) mv = { i, r, c }; });
+      if (!mv) break;
+      const pv = R.preview(run, mv.i, mv.r, mv.c);
+      const ev = R.place(run, mv.i, mv.r, mv.c).events.find((e) => e.type === 'score');
+      assert.equal(ev.result.score, pv.score);
+    }
+  }
+});
+
+test('reward math: leftover cap, interest cap, pouch', () => {
+  const run = playing(4);
+  run.tools = [makeTool('pouch')];
+  run.coins = 23;
+  run.order.target = 1;
+  run.order.patchesLeft = 12;
+  run.tray = [{ shape: 'dot_0', color: 'red' }, null, null];
+  R.place(run, 0, 4, 4);
+  assert.equal(run.phase, 'reward');
+  const byKind = Object.fromEntries(run.reward.lines.map((l) => [l.kind || l.label, l.coins]));
+  assert.equal(byKind.leftover, R.LEFTOVER_CAP);
+  assert.equal(byKind.interest, 4);
+  assert.equal(byKind['복주머니'], 2);
+  assert.equal(run.reward.total, R.ORDER_KINDS[0].reward + R.LEFTOVER_CAP + 4 + 2);
+});
+
+test('endless: victory → continue → day 5 with cycling bosses and rising targets', () => {
+  const run = R.newRun({ seed: 8 });
+  run.day = R.DAYS; run.orderIdx = 2; run.gift = null;
+  R.prepareOrder(run);
+  run.phase = 'reward';
+  run.reward = { lines: [], total: 0 };
+  R.collectReward(run);
+  assert.equal(run.phase, 'victory');
+  R.continueEndless(run);
+  assert.equal(run.phase, 'shop');
+  R.leaveShop(run);
+  assert.equal(run.day, R.DAYS + 1);
+  assert.equal(run.orderIdx, 0);
+  assert.ok(run.order.target > R.targetFor(R.DAYS, 2));
+  assert.ok(R.BOSS_IDS.includes(R.bossFor(run, R.DAYS + 1, 2)));
+  const n = R.nextOrderOf(run);
+  assert.deepEqual([n.day, n.orderIdx], [R.DAYS + 1, 1]);
+});
+
+test('bosses: big removes patches; busy blocks discards; jam fails without discards', () => {
+  const run = R.newRun({ seed: 9 });
+  run.orderIdx = 2;
+  run.bosses[0] = 'big';
+  R.prepareOrder(run);
+  assert.equal(run.order.patchesLeft, R.BASE_PATCHES - R.BIG_PENALTY);
+  run.bosses[0] = 'busy';
+  R.prepareOrder(run);
+  R.beginOrder(run);
+  assert.deepEqual(R.discard(run), []);
+  // fill the board so nothing fits, then a placement-free jam check fails the order
+  const full = playing(10);
+  full.order.discardsLeft = 0;
+  // checkerboard of holes: single patches fit, dominoes never do, and no line can complete
+  full.board = full.board.map((_, k) => (((k >> 3) + (k & 7)) % 2 ? 'knot' : null));
+  full.tray = [{ shape: 'dot_0', color: 'red' }, { shape: 'i2_0', color: 'red' }, null];
+  full.order.target = 1e9;
+  const ev = R.place(full, 0, 0, 0).events;
+  // after the dot only the domino is left and it fits nowhere → jam
+  assert.ok(ev.some((e) => e.type === 'fail' && e.reason === 'jam'));
+});
+
+test('tools: coins capped, grandma on even clears, sell price at least 1', async () => {
+  const { evaluate } = await import('../src/core/scoring.js');
+  const c = baseCtx({ coins: 500 });
+  assert.equal(evaluate(c, [makeTool('coins')]).mult, 1 + 8);
+  assert.equal(evaluate(baseCtx({ clearIndex: 2 }), [makeTool('grandma')]).mult, 2.5);
+  assert.equal(evaluate(baseCtx({ clearIndex: 3 }), [makeTool('grandma')]).mult, 1);
+  const { sellPrice } = await import('../src/core/tools.js');
+  for (const id of TOOL_IDS) assert.ok(sellPrice(makeTool(id)) >= 1);
+});
+
+test('migrate fills stats and locked on old saves', () => {
+  const run = R.newRun({ seed: 12 });
+  delete run.locked;
+  run.stats = { bestHand: 5 };
+  R.migrate(run);
+  assert.deepEqual(run.locked, []);
+  assert.equal(run.stats.bestHand, 5);
+  assert.equal(run.stats.monos, 0);
+});
+
+test('records: idempotent counters, daily streak, unlock reporting', async () => {
+  const { recordRun, shiftDayKey, dailyStreakAlive } = await import('../src/core/records.js');
+  assert.equal(shiftDayKey('2026-3-1', -1), '2026-2-28');
+  const meta = { runs: 1, wins: 0, bestDay: 0, bestHand: 0, bestStreak: 0, clears: 0, monos: 7, daily: {} };
+  const run = R.newRun({ seed: 1, mode: 'daily', dailyKey: '2026-10-10' });
+  run.stats.monos = 3;
+  run.stats.clears = 10;
+  const info = recordRun(meta, run, { victory: false });
+  assert.ok(info.unlocked.includes('artisan'));
+  recordRun(meta, run, { victory: true });
+  recordRun(meta, run, { victory: true });
+  assert.equal(meta.monos, 10);
+  assert.equal(meta.clears, 10);
+  assert.equal(meta.wins, 1);
+  assert.equal(meta.dailyStreak.count, 1);
+  const next = R.newRun({ seed: 2, mode: 'daily', dailyKey: '2026-10-11' });
+  recordRun(meta, next, {});
+  assert.equal(meta.dailyStreak.count, 2);
+  assert.ok(dailyStreakAlive(meta, '2026-10-12'));
+  assert.ok(!dailyStreakAlive(meta, '2026-10-14'));
 });

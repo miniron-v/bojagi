@@ -1,7 +1,7 @@
 // Stage view: hoop, tray, drag & drop, clear animations, plus the full-screen FX layer.
 // Owns only visual state; the controller feeds it core events.
 import { SHAPE_BY_ID } from '../core/shapes.js';
-import { N, canPlace, paint, fullLines, fitsAnywhere } from '../core/board.js';
+import { N, canPlace, paint, fullLines } from '../core/board.js';
 import { patchSprite, drawHoop, roundRect, PAL, clearSpriteCache } from './art.js';
 
 const easeOutBack = (t) => 1 + 2.4 * (t - 1) ** 3 + 1.4 * (t - 1) ** 2;
@@ -575,6 +575,3 @@ export class View {
   }
 }
 
-export function trayFits(board, tray) {
-  return tray.map((p) => !!p && fitsAnywhere(board, SHAPE_BY_ID[p.shape]));
-}

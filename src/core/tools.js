@@ -1,5 +1,5 @@
 // Sewing tools = the score engine (Balatro jokers).
-// score(ctx, inst, run) returns effects: { chips } | { mult } | { xmult }.
+// score(ctx, inst) returns effects: { chips } | { mult } | { xmult }.
 // Phases are applied in fixed order (chips → +mult → ×mult), so slot order never matters.
 
 import { COLORS, COLOR_NAMES } from './shapes.js';
@@ -57,6 +57,7 @@ const defs = [
     id: 'iron', name: '인두', rarity: 3, price: 8, art: 'iron',
     desc: (inst) => `줄을 지울 때 배수 +${inst.data.mult || 0}. 지울 때마다 +1씩 커짐`,
     init: () => ({ mult: 1 }),
+    badge: (inst) => `+${inst.data.mult}`,
     score: (ctx, inst) => (ctx.lineCount && inst.data.mult ? [{ mult: inst.data.mult }] : []),
     after: (ctx, inst) => {
       if (ctx.lineCount >= 1) { inst.data.mult += 1; return true; }
@@ -120,13 +121,14 @@ const defs = [
     id: 'silk', name: '비단', rarity: 3, price: 8, art: 'silk',
     desc: (inst) => `줄을 지울 때 칩 +${inst.data.chips || 0}. 조각을 놓을 때마다 +3씩 쌓이고 주문마다 초기화`,
     init: () => ({ chips: 0 }),
+    badge: (inst) => `+${inst.data.chips}`,
     onPlace: (inst) => { inst.data.chips += 3; },
     onOrderStart: (inst) => { inst.data.chips = 0; },
     score: (ctx, inst) => (ctx.lineCount && inst.data.chips ? [{ chips: inst.data.chips }] : []),
   },
   {
     id: 'grandma', name: '할머니의 바늘', rarity: 3, price: 9, art: 'needle',
-    desc: () => '주문에서 두 번째로 지울 때마다 ×2.5',
+    desc: () => '주문에서 짝수 번째(2·4·6…)로 지울 때마다 ×2.5',
     score: (ctx) => (ctx.lineCount && ctx.clearIndex % 2 === 0 ? [{ xmult: 2.5 }] : []),
   },
 ];
@@ -142,6 +144,12 @@ export function makeTool(id) {
 
 export function toolDesc(inst) {
   return TOOLS[inst.id].desc(inst);
+}
+
+/** Small live number shown on the tool slot for tools that grow (null for static tools). */
+export function toolBadge(inst) {
+  const def = TOOLS[inst.id];
+  return def.badge ? def.badge(inst) : null;
 }
 
 export function sellPrice(inst) {

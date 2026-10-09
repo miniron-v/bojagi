@@ -1,5 +1,6 @@
 // Balance simulator: plays many runs with a heuristic bot and reports where runs end.
-// Usage: node tools/simulate.mjs [runs=300] [bot=smart|greedy]
+// Usage: node tools/simulate.mjs [runs=300] [bot=smart|greedy] [shop=value|rarity] [DAY_BASE e.g. 240,900,2200,5500]
+//        NEWBIE=1 restricts the tool pool to a first-time player's unlocks.
 import * as R from '../src/core/run.js';
 import { SHAPE_BY_ID } from '../src/core/shapes.js';
 import { N, idx, paint, fullLines, clearLines, canPlace } from '../src/core/board.js';

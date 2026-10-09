@@ -1,9 +1,9 @@
 // Controller: wires core run state ↔ view ↔ DOM HUD/sheets, persistence and sound.
 // Input stays live during score tallies; only order win/fail sequences block the board.
 import * as R from '../core/run.js';
-import { TOOLS, TOOL_IDS, MAX_TOOLS, RARITY_NAME, toolDesc, sellPrice } from '../core/tools.js';
+import { TOOLS, TOOL_IDS, MAX_TOOLS, RARITY_NAME, toolDesc, toolBadge, sellPrice, makeTool } from '../core/tools.js';
 import { SHAPE_BY_ID } from '../core/shapes.js';
-import { View, trayFits } from './view.js';
+import { View } from './view.js';
 import { toolArt, glyph } from './icons.js';
 import { clothTexture } from './art.js';
 import { sfx, unlock, setEnabled, resumeAudio, setAmbient } from './audio.js';
@@ -11,6 +11,8 @@ import { createTitleArt } from './title-art.js';
 import { drawQuilt, shareText } from './quilt.js';
 import * as store from './store.js';
 import { lockedIds, isUnlocked, progress } from '../core/unlocks.js';
+import { recordRun as writeRecords, dailyStreakAlive } from '../core/records.js';
+import { fmt, fmtMult, kindName, dayName, bestDayLabel } from './format.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app');
@@ -67,19 +69,10 @@ function discover(id) {
   }
 }
 
-// ---------- formatting ----------
-const fmt = (n) => Math.floor(n).toLocaleString('ko-KR');
-const fmtMult = (m) => (Math.round(m * 10) / 10).toLocaleString('ko-KR');
-const kindName = (o) => R.ORDER_KINDS[o].name;
-const dayName = (d) => (d > R.DAYS ? `밤샘 ${d - R.DAYS}일째` : `장날 ${d}`);
 const dayLabel = () => dayName(run.day);
+const fitsOf = () => R.trayFits(run);
 
 // ---------- HUD ----------
-function toolBadge(t) {
-  if (t.id === 'iron') return `+${t.data.mult}`;
-  if (t.id === 'silk') return `+${t.data.chips}`;
-  return null;
-}
 
 /** Renders tool slots; when the same tools are already shown, only badges update so running animations survive. */
 function renderTools(container, tools, { onTap, empties = true, sellTags = false } = {}) {
@@ -134,7 +127,7 @@ function renderHud() {
   el.day.textContent = run.day > R.DAYS ? `밤샘 ${run.day - R.DAYS}` : run.day;
   el.dayMax.hidden = run.day > R.DAYS;
   el.kind.textContent = kindName(o.kind) + (run.mode === 'daily' ? ' · 오늘의 의뢰' : '');
-  el.kind.classList.toggle('boss', o.kind === 2);
+  el.kind.classList.toggle('boss', !!o.boss);
   el.target.textContent = fmt(o.target);
   el.patches.textContent = o.patchesLeft;
   el.statPatches.classList.toggle('low', o.patchesLeft <= 3);
@@ -279,12 +272,6 @@ function showScreen(name) {
   syncInput();
 }
 
-function yesterdayKey() {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return R.dailySeed(d).key;
-}
-
 function titleScreen() {
   run = null;
   busy = false;
@@ -296,20 +283,21 @@ function titleScreen() {
   const cont = $('#btn-continue');
   cont.hidden = !valid;
   if (valid) {
-    const what = save.phase === 'victory' ? '보자기 완성 · 밤샘 작업 가능' : `${dayName(save.day)} · ${R.ORDER_KINDS[save.orderIdx].name}`;
+    // between orders (gift/shop) the next order is what the player returns to
+    const at = ['gift', 'shop'].includes(save.phase) ? R.nextOrderOf(save) : { day: save.day, orderIdx: save.orderIdx };
+    const what = save.phase === 'victory' ? '보자기 완성 · 밤샘 작업 가능' : `${dayName(at.day)} · ${kindName(at.orderIdx)}`;
     $('.sub', cont).textContent = what + (save.mode === 'daily' ? ' · 오늘의 의뢰' : '');
   }
   const { key } = R.dailySeed();
   const today = meta.daily[key];
-  const ds = meta.dailyStreak;
-  const streakOn = ds && (ds.last === key || ds.last === yesterdayKey()) && ds.count > 0;
+  const streakOn = dailyStreakAlive(meta, key);
   $('.sub', $('#btn-daily')).textContent = today ? `오늘 기록: ${today.label}` : '모두가 같은 판을 짓는 하루';
   const stamp = $('#daily-stamp');
   stamp.hidden = !streakOn;
-  if (streakOn) stamp.textContent = `${ds.count}일 연속`;
+  if (streakOn) stamp.textContent = `${meta.dailyStreak.count}일 연속`;
   $('#codex-count').textContent = `${meta.discovered.length}/${TOOL_IDS.length}`;
   $('#best-line').textContent = meta.runs
-    ? `최고 ${meta.bestDay > R.DAYS ? `밤샘 ${meta.bestDay - R.DAYS}일` : `장날 ${meta.bestDay || 1}`} · 최고 한 땀 ${fmt(meta.bestHand)} · 완성 ${meta.wins}회`
+    ? `최고 ${bestDayLabel(meta.bestDay)} · 최고 한 땀 ${fmt(meta.bestHand)} · 완성 ${meta.wins}회`
     : '조각을 이어 손님의 보자기를 지어 주세요';
   $('#btn-sound').textContent = settings.sound ? '소리 켬' : '소리 끔';
   titleArt.start();
@@ -348,7 +336,7 @@ function enterGame() {
   el.score.textContent = fmt(shownScore);
   el.tally.classList.remove('show', 'preview');
   view.setBoard(run.board);
-  view.setTray(run.tray, trayFits(run.board, run.tray), false);
+  view.setTray(run.tray, fitsOf(), false);
   renderHud();
 }
 
@@ -370,7 +358,7 @@ function resumePhase() {
 
 function toolCard(id, { action = '', sold = false, locked = false, inst = null } = {}) {
   const def = TOOLS[id];
-  let desc = inst ? toolDesc(inst) : def.desc({ data: def.init ? def.init() : {} });
+  let desc = toolDesc(inst || makeTool(id));
   if (locked) {
     const p = !isUnlocked(id, meta) && progress(id, meta);
     desc = p ? `잠김 · ${p.need} (${p.have}/${p.goal})` : '아직 만나지 못한 도구';
@@ -443,7 +431,7 @@ function showIntro() {
 function begin() {
   const ev = R.beginOrder(run);
   persist();
-  view.setTray(run.tray, trayFits(run.board, run.tray));
+  view.setTray(run.tray, fitsOf());
   renderHud();
   syncInput();
   if (!meta.tutorial && run.day === 1 && run.orderIdx === 0) { hintStage = 1; hint('조각을 끌어 수틀에 놓으세요'); }
@@ -545,7 +533,7 @@ async function playEvents(events) {
         scoreEvent(ev);
         break;
       case 'tray':
-        view.setTray(run.tray, trayFits(run.board, run.tray));
+        view.setTray(run.tray, fitsOf());
         break;
       case 'discard':
         view.setTray([null, null, null], [true, true, true], false);
@@ -569,7 +557,7 @@ async function playEvents(events) {
     }
   }
   if (run && run.phase === 'play') {
-    view.setTray(run.tray, trayFits(run.board, run.tray), false);
+    view.setTray(run.tray, fitsOf(), false);
     renderHud();
   }
   syncInput();
@@ -648,11 +636,11 @@ function startTally(ev) {
         view.confetti(40);
       } else if (st.src === 'mono') {
         mult *= st.xmult;
-        label = '단색 솔기 ×2';
+        label = `단색 솔기 ×${st.xmult}`;
         view.text('단색 솔기!', boardMid.x, boardMid.y - view.cell * 1.5, { size: 32, color: '#f5c75a', dur: 900 });
       } else if (st.src === 'boss') {
         mult *= st.xmult;
-        label = '깐깐한 눈 ×0.5';
+        label = `${R.BOSSES.strict.name} ×${st.xmult}`;
       } else {
         if (st.chips) { chips += st.chips; fireTool(st.slot, `+${st.chips} 칩`, 'chips'); }
         if (st.mult) { mult += st.mult; fireTool(st.slot, `+${fmtMult(st.mult)} 배수`, 'mult'); }
@@ -714,7 +702,8 @@ async function winSequence() {
   sfx.win();
   haptic([30, 40, 30, 40, 60]);
   view.confetti(80);
-  const left = Math.min(5, run.order.patchesLeft);
+  const leftLine = run.reward && run.reward.lines.find((l) => l.kind === 'leftover');
+  const left = leftLine ? leftLine.coins : 0;
   const cr = el.coins.getBoundingClientRect();
   const ar = app.getBoundingClientRect();
   for (let i = 0; i < left; i++) {
@@ -765,11 +754,9 @@ function showReward() {
 }
 
 function nextOrderPreview() {
-  let day = run.day;
-  let o = run.orderIdx + 1;
-  if (o >= R.ORDERS_PER_DAY) { o = 0; day += 1; }
-  const boss = o === 2 ? R.BOSSES[day <= R.DAYS ? run.bosses[day - 1] : R.BOSS_IDS[(day * 7) % R.BOSS_IDS.length]] : null;
-  return `${dayName(day)} · ${R.ORDER_KINDS[o].name} · 목표 <b>${fmt(R.targetFor(day, o))}</b>${boss ? `<br><span class="boss-note">${boss.name}: ${boss.desc}</span>` : ''}`;
+  const n = R.nextOrderOf(run);
+  const boss = n.boss ? R.BOSSES[n.boss] : null;
+  return `${dayName(n.day)} · ${kindName(n.orderIdx)} · 목표 <b>${fmt(n.target)}</b>${boss ? `<br><span class="boss-note">${boss.name}: ${boss.desc}</span>` : ''}`;
 }
 
 function showShop() {
@@ -837,36 +824,7 @@ function showShop() {
 // ---------- end of run ----------
 /** Writes records immediately (before any animation) so closing the app can't lose them. */
 function recordRun(victory) {
-  const before = new Set(lockedIds(meta));
-  const st = run.stats;
-  const reachedDay = run.day;
-  endInfo = { newDay: reachedDay > meta.bestDay, newHand: st.bestHand > meta.bestHand };
-  meta.bestDay = Math.max(meta.bestDay, reachedDay);
-  meta.bestOrders = Math.max(meta.bestOrders, st.orders);
-  meta.bestHand = Math.max(meta.bestHand, st.bestHand);
-  meta.bestStreak = Math.max(meta.bestStreak, st.bestStreak);
-  const rep = run.reported || {};
-  for (const k of ['clears', 'monos', 'crosses', 'triples', 'perfects']) {
-    meta[k] = (meta[k] || 0) + (st[k] || 0) - (rep[k] || 0);
-    rep[k] = st[k] || 0;
-  }
-  run.reported = rep;
-  meta.maxCoins = Math.max(meta.maxCoins || 0, st.maxCoins || 0, run.coins);
-  if (victory && !run.winRecorded) { meta.wins += 1; run.winRecorded = true; }
-  if (run.mode === 'daily' && run.dailyKey) {
-    const prev = meta.daily[run.dailyKey];
-    const k = st.orders * 1e7 + Math.min(st.bestHand, 9999999);
-    if (!prev || k > prev.k) meta.daily[run.dailyKey] = { k, label: victory || st.orders >= 12 ? '완성' : `주문 ${st.orders}개` };
-    const keys = Object.keys(meta.daily);
-    if (keys.length > 14) keys.slice(0, keys.length - 14).forEach((key) => delete meta.daily[key]);
-    const ds = meta.dailyStreak || { last: null, count: 0 };
-    if (ds.last !== run.dailyKey) {
-      ds.count = ds.last === yesterdayKey() ? ds.count + 1 : 1;
-      ds.last = run.dailyKey;
-    }
-    meta.dailyStreak = ds;
-  }
-  endInfo.unlocked = [...before].filter((id) => isUnlocked(id, meta));
+  endInfo = writeRecords(meta, run, { victory });
   store.saveMeta(meta);
 }
 
@@ -972,9 +930,9 @@ function showHow(back) {
     <div class="how">
       <p><b>조각 놓기</b> — 아래 조각을 끌어 수틀에 놓아요. 놓을 때마다 남은 조각이 하나씩 줄어요.</p>
       <p><b>솔기 꿰매기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 사라지고 점수가 나요.</p>
-      <p><b>칩 × 배수</b> — 지운 칸이 칩, 지운 줄 수의 제곱과 연속 횟수가 배수예요. 두 줄을 한 번에 지우면 배수 4, 세 줄이면 9. 한 줄이 한 색이면 단색 솔기 ×2.</p>
+      <p><b>칩 × 배수</b> — 지운 칸마다 칩 5, 줄마다 칩 10. 배수는 지운 줄 수의 제곱에 연속 횟수를 더해요(두 줄 4, 세 줄 9). 한 줄이 한 색이면 단색 솔기 ×2.</p>
       <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 놓을 데가 없으면 「조각 바꾸기」로 트레이를 새로 받아요.</p>
-      <p><b>장터</b> — 품삯으로 바느질 도구를 사요. 도구 조합이 점수 엔진이에요. 엽전을 모아 두면 5닢마다 이자가 1닢 붙어요.</p>
+      <p><b>장터</b> — 품삯으로 바느질 도구를 사요. 도구 조합이 점수 엔진이에요. 엽전을 모아 두면 ${R.INTEREST_PER}닢마다 이자가 1닢(최대 ${R.INTEREST_CAP}닢) 붙어요.</p>
     </div>
     <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>알겠어요</button></div>`;
   const s = openModal(html);
@@ -997,7 +955,7 @@ function showRecords() {
     <div class="stat-grid">
       <div><small>지은 판</small><b>${meta.runs}</b></div>
       <div><small>완성한 보자기</small><b>${meta.wins}</b></div>
-      <div><small>최고 도달</small><b>${meta.bestDay > R.DAYS ? `밤샘 ${meta.bestDay - R.DAYS}일` : `장날 ${meta.bestDay || '-'}`}</b></div>
+      <div><small>최고 도달</small><b>${meta.bestDay ? bestDayLabel(meta.bestDay) : '-'}</b></div>
       <div><small>최고 한 땀</small><b>${fmt(meta.bestHand)}</b></div>
       <div><small>최고 연속</small><b>${meta.bestStreak}</b></div>
       <div><small>꿰맨 솔기</small><b>${fmt(meta.clears)}</b></div>
@@ -1011,10 +969,16 @@ function showRecords() {
 
 // ---------- title buttons ----------
 function confirmReplace(title, go) {
-  const s = openModal(`<h2>${title}</h2><p class="lead">이어 짓던 판은 사라져요.</p>
+  const s = openModal(`<h2>${title}</h2><p class="lead">이어 짓던 판은 사라져요. 그 판의 기록은 일지에 남아요.</p>
     <div class="row-actions"><button class="btn btn-ghost" id="no">취소</button><button class="btn btn-seal" id="yes" data-autofocus>시작</button></div>`, { center: true });
   on(s, '#no', closeModal);
-  on(s, '#yes', once(() => { store.clearRun(); go(); }));
+  on(s, '#yes', once(() => {
+    // the abandoned run still counts toward records and unlock progress
+    const old = store.loadRun();
+    if (R.isValidSave(old)) { writeRecords(meta, R.migrate(old), { victory: false }); store.saveMeta(meta); }
+    store.clearRun();
+    go();
+  }));
 }
 const hasLiveSave = () => { const s = store.loadRun(); return R.isValidSave(s) && s.phase !== 'over' ? s : null; };
 

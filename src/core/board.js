@@ -26,16 +26,6 @@ export function fitsAnywhere(board, shape) {
   return false;
 }
 
-export function placements(board, shape) {
-  const out = [];
-  for (let r = 0; r <= N - shape.h; r++) {
-    for (let c = 0; c <= N - shape.w; c++) {
-      if (canPlace(board, shape, r, c)) out.push([r, c]);
-    }
-  }
-  return out;
-}
-
 /** Returns a new board with the shape painted in color. Caller must check canPlace first. */
 export function paint(board, shape, r0, c0, color) {
   const b = board.slice();

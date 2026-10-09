@@ -11,7 +11,8 @@ Block Blast의 손맛에 Balatro의 **칩 × 배수** 점수 엔진을 얹어 �
 
 ## 플레이
 
-`dist/index.html` 하나로 동작합니다. 브라우저로 열거나 아무 정적 호스팅(GitHub Pages 등)에 올리면 됩니다.
+`dist/index.html` 하나로 동작합니다(코드·그림·소리 모두 포함, 글꼴만 Google Fonts에서 받고 없으면 기본 글꼴로 대체).
+브라우저로 열거나 아무 정적 호스팅(GitHub Pages 등)에 올리면 됩니다.
 
 ## 개발
 
@@ -34,12 +35,13 @@ src/core/   순수 로직 (DOM 없음, 저장 가능한 JSON 상태)
   scoring.js    칩 × 배수 계산과 단계별 내역(연출용)
   tools.js      바느질 도구 정의
   unlocks.js    도구 해금 조건
+  records.js    공방 일지(기록·연속 일수·해금 판정)
   run.js        주문·장터·보스·경제 상태 머신, 저장 검증·마이그레이션
 src/ui/     화면
   view.js       캔버스 수틀, 드래그 앤 드롭, 바느질·파티클·글자 연출
   main.js       컨트롤러: HUD, 점수 집계 연출, 시트(장터·보상·종료), 저장
   audio.js      Web Audio 합성 (Karplus–Strong 가야금)
-  art.js · icons.js · title-art.js · quilt.js · store.js · style.css
+  art.js · icons.js · title-art.js · quilt.js · format.js · store.js · style.css
 tools/      빌드, 시뮬레이터, e2e 스크립트
 ```
 

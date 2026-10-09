@@ -2,7 +2,7 @@
 // an event list the UI replays as animation. No DOM / timing here.
 import { createRng, next, int, weighted, pick, shuffle, hashString } from './rng.js';
 import { SHAPES, SHAPE_BY_ID, COLORS } from './shapes.js';
-import { N, idx, emptyBoard, canPlace, fitsAnywhere, paint, fullLines, clearLines, filledCount } from './board.js';
+import { N, emptyBoard, canPlace, fitsAnywhere, paint, fullLines, clearLines, filledCount } from './board.js';
 import { TOOLS, TOOL_IDS, MAX_TOOLS, makeTool, sellPrice } from './tools.js';
 import { evaluate } from './scoring.js';
 
@@ -14,6 +14,14 @@ export const BASE_DISCARDS = 2;
 export const START_COINS = 5;
 export const REROLL_BASE = 2;
 export const INTEREST_CAP = 4;
+export const INTEREST_PER = 5; // coins held per 1 coin of interest
+export const LEFTOVER_CAP = 5; // max coins paid for unused patches
+export const STREAK_GRACE = 3; // placements without a clear before the streak breaks
+export const KNOTS = 8;
+export const SHORT_PENALTY = 4;
+export const BIG_PENALTY = 2;
+export const BIG_MIN_SIZE = 4;
+export const BOSS_ORDER = 2; // index of the boss order within a day
 export const MONO_TRAY_CHANCE = 0.5;
 
 export const ORDER_KINDS = [
@@ -28,11 +36,11 @@ export const DAY_BASE = [240, 900, 2200, 5500];
 export const ENDLESS_GROWTH = 2.2;
 
 export const BOSSES = {
-  knots: { name: '매듭', desc: '수틀에 매듭 8개가 박힌 채 시작' },
+  knots: { name: '매듭', desc: `수틀에 매듭 ${KNOTS}개가 박힌 채 시작` },
   ink: { name: '먹물', desc: '흑색 칸은 칩을 주지 않음' },
   busy: { name: '바쁜 손', desc: '조각 바꾸기를 쓸 수 없음' },
-  short: { name: '짧은 실', desc: '조각이 4개 적음' },
-  big: { name: '큰 천', desc: '4칸 이상 조각만, 조각 2개 적음' },
+  short: { name: '짧은 실', desc: `조각이 ${SHORT_PENALTY}개 적음` },
+  big: { name: '큰 천', desc: `${BIG_MIN_SIZE}칸 이상 조각만, 조각 ${BIG_PENALTY}개 적음` },
   strict: { name: '깐깐한 눈', desc: '최종 배수가 절반' },
 };
 export const BOSS_IDS = Object.keys(BOSSES);
@@ -77,17 +85,17 @@ export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal'
     reward: null,
     history: [],
     endless: false,
-    stats: { ...emptyStats() },
+    stats: emptyStats(),
   };
   prepareOrder(run);
   return run;
 }
 
-/** The first customer's gift is offered after the first order, once the player knows the rules. */
 export function emptyStats() {
-  return { bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0, monos: 0, crosses: 0, triples: 0, maxCoins: 0 };
+  return { bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0, monos: 0, crosses: 0, triples: 0 };
 }
 
+/** The first customer's gift is offered after the first order, once the player knows the rules. */
 export function chooseGift(run, i) {
   if (run.phase !== 'gift') return [];
   const id = run.gift[i];
@@ -97,10 +105,23 @@ export function chooseGift(run, i) {
   return [{ type: 'gift', id }];
 }
 
+/** Boss rule for any order of the run (null for non-boss orders). Endless days cycle the rules. */
+export function bossFor(run, day, orderIdx) {
+  if (orderIdx !== BOSS_ORDER) return null;
+  if (day <= DAYS) return run.bosses[day - 1];
+  return BOSS_IDS[(day * 7) % BOSS_IDS.length];
+}
+
 export function bossOf(run) {
-  if (run.orderIdx !== 2) return null;
-  if (run.day <= DAYS) return run.bosses[run.day - 1];
-  return BOSS_IDS[(run.day * 7) % BOSS_IDS.length];
+  return bossFor(run, run.day, run.orderIdx);
+}
+
+/** The order that follows the current one. */
+export function nextOrderOf(run) {
+  let day = run.day;
+  let orderIdx = run.orderIdx + 1;
+  if (orderIdx >= ORDERS_PER_DAY) { orderIdx = 0; day += 1; }
+  return { day, orderIdx, target: targetFor(day, orderIdx), boss: bossFor(run, day, orderIdx) };
 }
 
 function toolSum(run, key) {
@@ -111,8 +132,8 @@ export function prepareOrder(run) {
   const boss = bossOf(run);
   let patches = BASE_PATCHES + toolSum(run, 'patches');
   let discards = BASE_DISCARDS + toolSum(run, 'discards');
-  if (boss === 'short') patches -= 4;
-  if (boss === 'big') patches -= 2;
+  if (boss === 'short') patches -= SHORT_PENALTY;
+  if (boss === 'big') patches -= BIG_PENALTY;
   if (boss === 'busy') discards = 0;
   for (const t of run.tools) {
     const def = TOOLS[t.id];
@@ -130,13 +151,12 @@ export function prepareOrder(run) {
     sinceClear: 0,
     clears: 0,
     stuck: false,
-    best: 0,
     colors: {},
   };
   run.board = emptyBoard();
   if (boss === 'knots') {
     let n = 0;
-    while (n < 8) {
+    while (n < KNOTS) {
       const k = int(run.rng, N * N);
       if (run.board[k] === null) { run.board[k] = 'knot'; n++; }
     }
@@ -153,7 +173,7 @@ export function beginOrder(run) {
 }
 
 function shapePool(run) {
-  if (run.order && run.order.boss === 'big') return SHAPES.filter((s) => s.size >= 4);
+  if (run.order && run.order.boss === 'big') return SHAPES.filter((s) => s.size >= BIG_MIN_SIZE);
   return SHAPES;
 }
 
@@ -221,7 +241,7 @@ export function preview(run, i, r, c) {
   const lines = fullLines(painted);
   const res = scorePlacement(run, painted, lines, shape, true);
   const o = run.order;
-  const streakBreaks = !lines.length && o.streak > 0 && o.sinceClear + 1 >= 3;
+  const streakBreaks = !lines.length && o.streak > 0 && o.sinceClear + 1 >= STREAK_GRACE;
   return { lines, ...res.result, streak: res.ctx.streak, streakBreaks, completes: o.score + res.result.score >= o.target };
 }
 
@@ -297,12 +317,11 @@ export function place(run, i, r, c) {
     });
   } else {
     o.sinceClear += 1;
-    if (o.sinceClear >= 3) o.streak = 0;
+    if (o.sinceClear >= STREAK_GRACE) o.streak = 0;
   }
 
   run.board = after;
   o.score += result.score;
-  o.best = Math.max(o.best, result.score);
   run.stats.bestHand = Math.max(run.stats.bestHand, result.score);
   events.push({
     type: 'score', lines, cleared, result, streak: o.streak, perfect: ctx.perfect,
@@ -340,10 +359,10 @@ function winOrder(run) {
   run.stats.orders += 1;
   const lines = [];
   lines.push({ label: ORDER_KINDS[o.kind].name + ' 완료', coins: ORDER_KINDS[o.kind].reward });
-  const left = Math.min(5, o.patchesLeft);
-  if (left > 0) lines.push({ label: `남은 조각 ${o.patchesLeft}개`, coins: left });
-  const interest = Math.min(INTEREST_CAP, Math.floor(run.coins / 5));
-  if (interest > 0) lines.push({ label: '이자 (5닢마다 1)', coins: interest });
+  const left = Math.min(LEFTOVER_CAP, o.patchesLeft);
+  if (left > 0) lines.push({ label: `남은 조각 ${o.patchesLeft}개`, coins: left, kind: 'leftover' });
+  const interest = Math.min(INTEREST_CAP, Math.floor(run.coins / INTEREST_PER));
+  if (interest > 0) lines.push({ label: `이자 (${INTEREST_PER}닢마다 1)`, coins: interest, kind: 'interest' });
   run.tools.forEach((t) => {
     const def = TOOLS[t.id];
     if (def.reward) lines.push({ label: def.name, coins: def.reward(run, t) });
@@ -355,7 +374,6 @@ function winOrder(run) {
 export function collectReward(run) {
   if (run.phase !== 'reward') return [];
   run.coins += run.reward.total;
-  run.stats.maxCoins = Math.max(run.stats.maxCoins || 0, run.coins);
   const got = run.reward.total;
   run.reward = null;
   const finishedRun = run.day === DAYS && run.orderIdx === ORDERS_PER_DAY - 1 && !run.endless;
@@ -459,8 +477,8 @@ export function isValidSave(s) {
     if (!Array.isArray(s.tools) || !s.tools.every((t) => t && TOOLS[t.id] && t.data)) return false;
     if (!Array.isArray(s.tray) || s.tray.length !== 3) return false;
     if (!s.tray.every((p) => p === null || (SHAPE_BY_ID[p.shape] && COLORS.includes(p.color)))) return false;
-    const needsOrder = ['intro', 'play', 'reward', 'gift', 'shop', 'over', 'victory'];
-    if (!needsOrder.includes(s.phase)) return false;
+    const phases = ['intro', 'play', 'reward', 'gift', 'shop', 'over', 'victory'];
+    if (!phases.includes(s.phase)) return false;
     if (!s.order || typeof s.order.target !== 'number') return false;
     if (s.phase === 'reward' && !(s.reward && Array.isArray(s.reward.lines))) return false;
     if (s.phase === 'gift' && !(Array.isArray(s.gift) && s.gift.every((id) => TOOLS[id]))) return false;
@@ -471,4 +489,3 @@ export function isValidSave(s) {
   }
 }
 
-export { idx, N };
