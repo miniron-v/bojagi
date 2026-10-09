@@ -151,3 +151,27 @@ export const sfx = {
   buy() { pluck(9, { gain: 0.3 }); pluck(12, { gain: 0.3, delay: 0.07 }); tone(1975, 0.15, { type: 'triangle', gain: 0.08, delay: 0.1 }); },
   perfect() { [0, 4, 7, 10, 12, 14].forEach((s, i) => pluck(7 + s, { gain: 0.35, delay: i * 0.05, bright: 0.7 })); },
 };
+
+// Ambient: sparse, quiet plucks on the pentatonic ladder, like someone tuning in the next room.
+let ambientTimer = 0;
+let ambientOn = false;
+let lastStep = 5;
+export function setAmbient(on) {
+  ambientOn = on;
+  clearTimeout(ambientTimer);
+  if (on) scheduleAmbient();
+}
+function scheduleAmbient() {
+  ambientTimer = setTimeout(() => {
+    if (!ambientOn) return;
+    if (ready() && !document.hidden) {
+      // a short phrase: one to three notes walking near the previous one
+      const n = 1 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) {
+        lastStep = Math.max(0, Math.min(12, lastStep + Math.floor(Math.random() * 5) - 2));
+        pluck(lastStep, { gain: 0.06, delay: i * (0.18 + Math.random() * 0.2), bright: 0.3, bend: Math.random() < 0.3 ? 0.02 : 0 });
+      }
+    }
+    scheduleAmbient();
+  }, 2200 + Math.random() * 3800);
+}

@@ -6,7 +6,7 @@ import { SHAPE_BY_ID } from '../core/shapes.js';
 import { View, trayFits } from './view.js';
 import { toolArt, glyph } from './icons.js';
 import { clothTexture } from './art.js';
-import { sfx, unlock, setEnabled, resumeAudio } from './audio.js';
+import { sfx, unlock, setEnabled, resumeAudio, setAmbient } from './audio.js';
 import { createTitleArt } from './title-art.js';
 import { drawQuilt, shareText } from './quilt.js';
 import * as store from './store.js';
@@ -37,6 +37,7 @@ let pendingHint = null;
 const speed = () => (settings.fast ? 0.55 : 1);
 
 setEnabled(settings.sound);
+setAmbient(settings.sound && settings.ambient !== false);
 app.style.setProperty('--cloth', `url(${clothTexture()})`);
 el.pause.innerHTML = glyph.pause;
 $('#ic-coin').innerHTML = glyph.coin;
@@ -593,6 +594,13 @@ function scoreEvent(ev) {
   const plan = view.clearLines(lines, ev.streak);
   plan.stitchTimes.forEach((t, k) => setTimeout(() => { sfx.stitch(k, ev.streak); haptic(12); }, t));
   view.shake(1 + lines.length * 0.6);
+  const mid = view.cellCenterApp(3.5, 3.5);
+  const cross = lines.some((l) => l.type === 'row') && lines.some((l) => l.type === 'col');
+  if (lines.length >= 2) {
+    const word = ['', '', '두 줄', '세 줄', '네 줄', '다섯 줄'][Math.min(5, lines.length)];
+    view.text(`${word}${cross ? ' 교차' : ''}!`, mid.x, mid.y + view.cell * 1.6, { size: 34 + lines.length * 4, color: '#f4ead3', dur: 1000, pop: 1.5 });
+    haptic([15, 30, 25]);
+  }
   tallyJob = startTally(ev);
 }
 
@@ -939,7 +947,8 @@ function bindSwitches(s) {
       sfx.ui();
     });
   };
-  bind('sw-sound', 'sound', () => setEnabled(settings.sound));
+  bind('sw-sound', 'sound', () => { setEnabled(settings.sound); setAmbient(settings.sound && settings.ambient !== false); });
+  bind('sw-ambient', 'ambient', () => setAmbient(settings.sound && settings.ambient !== false));
   bind('sw-haptics', 'haptics', () => haptic(20));
   bind('sw-fast', 'fast', () => { view.speed = speed(); });
 }
@@ -947,7 +956,7 @@ function bindSwitches(s) {
 function showPause() {
   if (!run || busy || !el.modal.hidden) return;
   const html = `<div class="eyebrow">바늘을 잠시 꽂아 두고</div><h2>잠시 쉬기</h2>
-    ${switchRow('sw-sound', '소리', settings.sound)}${switchRow('sw-haptics', '진동', settings.haptics)}${switchRow('sw-fast', '빠른 연출', settings.fast)}
+    ${switchRow('sw-sound', '소리', settings.sound)}${switchRow('sw-ambient', '배경 가락', settings.ambient !== false)}${switchRow('sw-haptics', '진동', settings.haptics)}${switchRow('sw-fast', '빠른 연출', settings.fast)}
     <div class="actions"><button class="btn btn-seal" id="resume" data-autofocus>계속하기</button>
     <button class="btn btn-ghost" id="how">하는 방법</button>
     <button class="btn btn-ghost" id="quit">처음으로 (진행 저장됨)</button></div>`;
@@ -1024,6 +1033,7 @@ on(document, '#btn-how', () => showHow());
 on(document, '#btn-sound', (e, n) => {
   settings.sound = !settings.sound;
   setEnabled(settings.sound);
+  setAmbient(settings.sound && settings.ambient !== false);
   store.saveSettings(settings);
   n.textContent = settings.sound ? '소리 켬' : '소리 끔';
 });
