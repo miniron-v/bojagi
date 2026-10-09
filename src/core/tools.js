@@ -39,13 +39,13 @@ const defs = [
   },
   {
     id: 'sewingbox', name: '반짇고리', rarity: 1, price: 3, art: 'box',
-    desc: () => '주문마다 버리기 +1, 조각 +1',
+    desc: () => '주문마다 조각 바꾸기 +1, 조각 +1',
     discards: 1,
     patches: 1,
   },
   {
     id: 'lantern', name: '청사초롱', rarity: 2, price: 6, art: 'lantern',
-    desc: () => '남은 버리기 1회마다 배수 +2',
+    desc: () => '남은 조각 바꾸기 1회마다 배수 +2',
     score: (ctx) => (ctx.lineCount && ctx.discardsLeft ? [{ mult: 2 * ctx.discardsLeft }] : []),
   },
   {

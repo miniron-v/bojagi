@@ -2,9 +2,8 @@
 // Owns only visual state; the controller feeds it core events.
 import { SHAPE_BY_ID } from '../core/shapes.js';
 import { N, canPlace, paint, fullLines, fitsAnywhere } from '../core/board.js';
-import { patchSprite, drawHoop, roundRect, PAL } from './art.js';
+import { patchSprite, drawHoop, roundRect, PAL, clearSpriteCache } from './art.js';
 
-const TALLY_SPACE = 64;
 const easeOutBack = (t) => 1 + 2.4 * (t - 1) ** 3 + 1.4 * (t - 1) ** 2;
 const easeOut = (t) => 1 - (1 - t) ** 3;
 const clamp01 = (t) => Math.max(0, Math.min(1, t));
@@ -39,11 +38,21 @@ export class View {
     this.boss = null;
     this.hoopCache = null;
     this.resize = this.resize.bind(this);
-    new ResizeObserver(this.resize).observe(app);
+    const ro = new ResizeObserver(() => this.resize());
+    ro.observe(app);
+    ro.observe(stage);
+    this.watchDpr();
     this.resize();
     this.bindInput();
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
+  }
+
+  watchDpr() {
+    try {
+      const mq = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      mq.addEventListener('change', () => { this.resize(); this.watchDpr(); }, { once: true });
+    } catch { /* older browsers */ }
   }
 
   // ---------- layout ----------
@@ -60,16 +69,20 @@ export class View {
     }
     this.AW = ar.width;
     this.AH = ar.height;
-    const c = Math.floor(Math.min((this.W - 28) / 8.64, (this.H - TALLY_SPACE - 10) / 11.9));
+    // room above the hoop for its clamp; the tally lives in the order card
+    this.tallySpace = 16;
+    const c = Math.floor(Math.min((this.W - 28) / 8.64, (this.H - this.tallySpace - 10) / 11.6));
     this.cell = Math.max(18, c);
+    this.spritePx = Math.round(this.cell * this.dpr);
+    clearSpriteCache();
     const size = this.cell * 8;
     this.size = size;
     this.bx = Math.round((this.W - size) / 2);
-    this.by = Math.round(TALLY_SPACE + this.cell * 0.32);
-    const trayTop = this.by + size + this.cell * 0.75;
+    this.by = Math.round(this.tallySpace + this.cell * 0.32);
+    const trayTop = this.by + size + this.cell * 0.6;
     const trayH = Math.max(this.cell * 2.9, this.H - trayTop - 4);
     this.trayRect = { y: trayTop, h: trayH };
-    this.trayScale = Math.min(0.55, (this.W / 3 - 26) / (5 * this.cell), trayH / (5.4 * this.cell));
+    this.trayScale = Math.min(0.62, (this.W / 3 - 20) / (5 * this.cell), trayH / (5.2 * this.cell));
     this.slots = [0, 1, 2].map((i) => ({ cx: (this.W / 6) * (1 + 2 * i), cy: trayTop + trayH / 2 }));
     this.hoopCache = null;
   }
@@ -131,7 +144,7 @@ export class View {
       const d = this.drag;
       this.drag = null;
       this.handlers.hover(null);
-      if (d.valid && e.type === 'pointerup' && this.handlers.drop(d.i, d.anchor.r, d.anchor.c)) return;
+      if (d.valid && e.type === 'pointerup' && this.enabled && this.handlers.drop(d.i, d.anchor.r, d.anchor.c, d.piece)) return;
       // fly back to the tray
       const cx = d.x;
       const cy = d.y - d.lift;
@@ -140,6 +153,16 @@ export class View {
     };
     cv.addEventListener('pointerup', end);
     cv.addEventListener('pointercancel', end);
+    cv.addEventListener('lostpointercapture', end);
+  }
+
+  /** Drop any drag in progress without placing (modal opened, tray changed, screen left). */
+  cancelDrag() {
+    if (!this.drag) return;
+    const d = this.drag;
+    this.drag = null;
+    this.handlers.hover(null);
+    this.returning = { i: d.i, x: d.x, y: d.y - d.lift, t0: performance.now(), scale: 1 };
   }
 
   hitSlot(x, y) {
@@ -193,10 +216,9 @@ export class View {
     }
     this.tray[ev.tray] = null;
     this.returning = null;
-    this.shake(0.8);
   }
 
-  async clearLines(lines, streak) {
+  clearLines(lines, streak) {
     const now = performance.now();
     const per = this.reduced ? 0 : 150 * this.speed;
     lines.forEach((line, k) => {
@@ -204,11 +226,16 @@ export class View {
       this.lineGlow.push({ line, t0: now + k * per });
     });
     // cells leave in a wave following the needle
+    const seen = new Set();
     lines.forEach((line, k) => {
       line.cells.forEach((cell, j) => {
         const delay = k * per + (j / N) * 240 * this.speed;
         const key = cell.r * N + cell.c;
-        if (this.leaving.some((l) => l.key === key)) return;
+        if (seen.has(key)) return;
+        seen.add(key);
+        // the board model forgets the cell now; the leaving list owns its last moments
+        this.board[key] = null;
+        this.cellPop.delete(key);
         this.leaving.push({ key, r: cell.r, c: cell.c, color: cell.color, t0: now + delay, spin: (Math.random() - 0.5) * 2 });
       });
     });
@@ -271,7 +298,8 @@ export class View {
   // ---------- render ----------
   loop(now) {
     requestAnimationFrame(this.loop);
-    this.renderStage(now);
+    if (this.app.offsetParent === null && !this.app.isConnected) return;
+    if (this.stage.offsetParent !== null) this.renderStage(now);
     this.renderFx(now);
   }
 
@@ -288,7 +316,8 @@ export class View {
   }
 
   drawPatch(g, color, x, y, size, alpha = 1, rot = 0) {
-    const spr = patchSprite(color, size * this.dpr);
+    // one sprite per color at board resolution; scaled copies are drawn from it
+    const spr = patchSprite(color, this.spritePx);
     g.globalAlpha = alpha;
     if (rot) {
       g.save();
@@ -335,7 +364,6 @@ export class View {
     for (let k = 0; k < N * N; k++) {
       const col = this.board[k];
       if (!col) continue;
-      if (this.leaving.some((l) => l.key === k && now >= l.t0)) continue;
       const r = Math.floor(k / N), c = k % N;
       let s = 1;
       const t0 = this.cellPop.get(k);
@@ -346,8 +374,9 @@ export class View {
       }
       const size = cell * s;
       const off = (cell - size) / 2;
-      const tint = willClear.has(k) && col !== 'knot' ? d.piece.color : col;
-      this.drawPatch(g, tint, bx + c * cell + off, by + r * cell + off, size);
+      // colors stay true while previewing: single-color seams must be readable
+      const lift = willClear.has(k) ? Math.sin(now / 120 + (r + c) * 0.5) * cell * 0.03 : 0;
+      this.drawPatch(g, col, bx + c * cell + off, by + r * cell + off - lift, size);
       if (willClear.has(k)) {
         g.fillStyle = `rgba(255,250,235,${0.12 + 0.1 * Math.sin(now / 90)})`;
         roundRect(g, bx + c * cell + 2, by + r * cell + 2, cell - 4, cell - 4, cell * 0.16);
@@ -379,7 +408,11 @@ export class View {
     // leaving cells: puff up, spin, shrink
     this.leaving = this.leaving.filter((l) => {
       const t = (now - l.t0) / (380 * this.speed);
-      if (t < 0) return true;
+      if (t < 0) {
+        // waiting for the needle: still sewn in place
+        this.drawPatch(g, l.color, bx + l.c * cell, by + l.r * cell, cell);
+        return true;
+      }
       if (t > 1) return false;
       if (!l.burst) {
         l.burst = true;

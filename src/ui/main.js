@@ -1,51 +1,60 @@
 // Controller: wires core run state ↔ view ↔ DOM HUD/sheets, persistence and sound.
+// Input stays live during score tallies; only order win/fail sequences block the board.
 import * as R from '../core/run.js';
 import { TOOLS, TOOL_IDS, MAX_TOOLS, RARITY_NAME, toolDesc, sellPrice } from '../core/tools.js';
 import { SHAPE_BY_ID } from '../core/shapes.js';
 import { View, trayFits } from './view.js';
 import { toolArt, glyph } from './icons.js';
-import { clothTexture, paintPatch } from './art.js';
-import { sfx, unlock, setEnabled } from './audio.js';
+import { clothTexture } from './art.js';
+import { sfx, unlock, setEnabled, resumeAudio } from './audio.js';
+import { createTitleArt } from './title-art.js';
+import { drawQuilt, shareText } from './quilt.js';
 import * as store from './store.js';
 
-const $ = (s, el = document) => el.querySelector(s);
+const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app');
 const el = {
   title: $('#title'), game: $('#game'), modal: $('#modal'), sheet: $('#sheet'), toast: $('#toast'),
   day: $('#hud-day'), dayMax: $('#hud-daymax'), kind: $('#hud-kind'), score: $('#hud-score'), target: $('#hud-target'),
   fill: $('#hud-fill'), ghost: $('#hud-ghost'), bar: $('#hud-bar'), patches: $('#hud-patches'), discards: $('#hud-discards'),
   coins: $('#hud-coins'), boss: $('#hud-boss'), tools: $('#hud-tools'), tally: $('#tally'), hint: $('#hint'),
-  discardBtn: $('#btn-discard'), pause: $('#btn-pause'), statPatches: $('#stat-patches'),
+  discardBtn: $('#btn-discard'), pause: $('#btn-pause'), statPatches: $('#stat-patches'), streak: $('#hud-streak'),
 };
 
 let run = null;
 let meta = store.loadMeta();
 let settings = store.loadSettings();
-let busy = false;
+let busy = false; // win/fail sequence running
 let shownScore = 0;
-let hudScore = 0; // score the HUD is allowed to show (lags the core until the slam)
+let pendingScore = 0; // points earned in the core but not yet "slammed" into the HUD
 let hintStage = 0;
 let lastPlaced = null;
+let tallyJob = null;
+let lastHoverKey = null;
+let endInfo = null;
+let pendingHint = null;
 const speed = () => (settings.fast ? 0.55 : 1);
 
 setEnabled(settings.sound);
 app.style.setProperty('--cloth', `url(${clothTexture()})`);
-$('#btn-pause').innerHTML = glyph.pause;
+el.pause.innerHTML = glyph.pause;
 $('#ic-coin').innerHTML = glyph.coin;
 $('#ic-patch').innerHTML = glyph.patch;
+$('#ic-reroll').innerHTML = glyph.reroll;
 
 const view = new View({ stage: $('#stage'), canvas: $('#cv'), fxCanvas: $('#fx'), app });
 view.speed = speed();
+const titleArt = createTitleArt($('#title-art'));
 
 function haptic(p) {
   if (!settings.haptics) return;
-  try { navigator.vibrate && navigator.vibrate(p); } catch { /* blocked */ }
+  try { if (navigator.vibrate) navigator.vibrate(p); } catch { /* blocked in some frames */ }
 }
 
 // ---------- persistence ----------
 function persist() {
   if (!run) return;
-  if (run.phase === 'over' || run.phase === 'victory') store.clearRun();
+  if (run.phase === 'over') store.clearRun();
   else store.saveRun(run);
 }
 
@@ -60,10 +69,29 @@ function discover(id) {
 const fmt = (n) => Math.floor(n).toLocaleString('ko-KR');
 const fmtMult = (m) => (Math.round(m * 10) / 10).toLocaleString('ko-KR');
 const kindName = (o) => R.ORDER_KINDS[o].name;
-const dayLabel = () => (run.day > R.DAYS ? `밤샘 ${run.day - R.DAYS}일째` : `장날 ${run.day}`);
+const dayName = (d) => (d > R.DAYS ? `밤샘 ${d - R.DAYS}일째` : `장날 ${d}`);
+const dayLabel = () => dayName(run.day);
 
 // ---------- HUD ----------
-function renderTools(container, tools, { onTap, empties = true } = {}) {
+function toolBadge(t) {
+  if (t.id === 'iron') return `+${t.data.mult}`;
+  if (t.id === 'silk') return `+${t.data.chips}`;
+  return null;
+}
+
+/** Renders tool slots; when the same tools are already shown, only badges update so running animations survive. */
+function renderTools(container, tools, { onTap, empties = true, sellTags = false } = {}) {
+  const sig = tools.map((t) => t.id).join(',') + `|${empties}|${sellTags}`;
+  if (container.dataset.sig === sig) {
+    tools.forEach((t, i) => {
+      const badge = container.children[i] && container.children[i].querySelector('.badge');
+      if (badge) badge.textContent = toolBadge(t);
+    });
+    container._onTap = onTap;
+    return;
+  }
+  container.dataset.sig = sig;
+  container._onTap = onTap;
   container.innerHTML = '';
   const n = empties ? MAX_TOOLS : tools.length;
   for (let i = 0; i < n; i++) {
@@ -79,13 +107,20 @@ function renderTools(container, tools, { onTap, empties = true } = {}) {
       b.classList.add(`r${def.rarity}`);
       b.innerHTML = toolArt(def);
       b.setAttribute('aria-label', `${def.name}: ${toolDesc(t)}`);
-      if (t.id === 'iron' || t.id === 'silk') {
+      const badgeText = toolBadge(t);
+      if (badgeText) {
         const badge = document.createElement('span');
         badge.className = 'badge';
-        badge.textContent = t.id === 'iron' ? `+${t.data.mult}` : `+${t.data.chips}`;
+        badge.textContent = badgeText;
         b.appendChild(badge);
       }
-      b.addEventListener('click', (e) => { e.stopPropagation(); onTap && onTap(i, b); });
+      if (sellTags) {
+        const tag = document.createElement('span');
+        tag.className = 'sell';
+        tag.textContent = `${sellPrice(t)}닢`;
+        b.appendChild(tag);
+      }
+      b.addEventListener('click', (e) => { e.stopPropagation(); if (container._onTap) container._onTap(i, b); });
     }
     container.appendChild(b);
   }
@@ -103,37 +138,43 @@ function renderHud() {
   el.statPatches.classList.toggle('low', o.patchesLeft <= 3);
   el.discards.textContent = o.discardsLeft;
   el.coins.textContent = run.coins;
-  el.discardBtn.querySelector('b').textContent = o.discardsLeft;
   el.discardBtn.disabled = o.discardsLeft <= 0 || run.phase !== 'play';
   el.discardBtn.classList.toggle('urge', !!o.stuck && o.discardsLeft > 0);
   if (o.boss) {
     const b = R.BOSSES[o.boss];
     el.boss.hidden = false;
-    el.boss.innerHTML = `<span class="seal">${b.name[0]}</span><span>${b.desc}</span>`;
+    el.boss.innerHTML = `<span class="seal">${b.name[0]}</span><b>${b.name}</b><span>${b.desc}</span>`;
   } else el.boss.hidden = true;
+  setStreak(o.streak);
   renderTools(el.tools, run.tools, { onTap: (i, b) => showToolTip(run.tools[i], b) });
-  if (!busy) setBar(o.score);
+  setBar();
 }
 
-function setBar(score) {
+/** Streak chip: shown from 2 in a row; 'up' while hovering a clear, 'warn' when the move would break it. */
+function setStreak(n, state = '') {
+  el.streak.hidden = n < 2;
+  el.streak.classList.toggle('warn', state === 'warn');
+  el.streak.classList.toggle('up', state === 'up');
+  $('b', el.streak).textContent = n;
+}
+
+function setBar() {
   const o = run.order;
-  hudScore = score;
-  const pct = Math.min(100, (score / o.target) * 100);
-  el.fill.style.width = pct + '%';
-  el.bar.classList.toggle('done', score >= o.target);
+  const shown = o.score - pendingScore;
+  el.fill.style.width = Math.min(100, (shown / o.target) * 100) + '%';
+  el.bar.classList.toggle('done', shown >= o.target);
 }
 
 function animateScore() {
-  if (run && run.order) {
-    const targetScore = hudScore;
-    if (shownScore !== targetScore) {
-      const diff = targetScore - shownScore;
-      shownScore += Math.sign(diff) * Math.max(1, Math.ceil(Math.abs(diff) * 0.16));
-      if ((diff > 0 && shownScore > targetScore) || (diff < 0 && shownScore < targetScore)) shownScore = targetScore;
-      el.score.textContent = fmt(shownScore);
-    }
-  }
   requestAnimationFrame(animateScore);
+  if (!run || !run.order) return;
+  const target = run.order.score - pendingScore;
+  if (shownScore !== target) {
+    const diff = target - shownScore;
+    shownScore += Math.sign(diff) * Math.max(1, Math.ceil(Math.abs(diff) * 0.16));
+    if ((diff > 0 && shownScore > target) || (diff < 0 && shownScore < target)) shownScore = target;
+    el.score.textContent = fmt(shownScore);
+  }
 }
 requestAnimationFrame(animateScore);
 
@@ -167,12 +208,15 @@ function showToolTip(inst, anchor, extra) {
   const def = TOOLS[inst.id];
   tipEl = document.createElement('div');
   tipEl.className = 'pop-tip';
-  tipEl.innerHTML = `<b>${def.name}</b> <small style="color:var(--muted)">${RARITY_NAME[def.rarity]}</small><p>${toolDesc(inst)}</p>`;
+  tipEl.setAttribute('role', 'tooltip');
+  tipEl.innerHTML = `<b>${def.name}</b> <small>${RARITY_NAME[def.rarity]}</small><p>${toolDesc(inst)}</p>`;
   if (extra) tipEl.appendChild(extra);
   app.appendChild(tipEl);
   const ar = app.getBoundingClientRect();
   const br = anchor.getBoundingClientRect();
-  tipEl.style.top = `${br.bottom - ar.top + 8}px`;
+  const below = br.bottom - ar.top + 8;
+  const h = tipEl.offsetHeight;
+  tipEl.style.top = `${below + h > ar.height - 12 ? br.top - ar.top - h - 8 : below}px`;
 }
 
 let hintTimer = 0;
@@ -184,7 +228,7 @@ function hint(text, ms = 0) {
   if (ms) hintTimer = setTimeout(() => el.hint.classList.remove('show'), ms);
 }
 
-function toast(text, ms = 1400) {
+function toast(text, ms = 1600) {
   el.toast.textContent = text;
   el.toast.classList.add('show');
   clearTimeout(toast.t);
@@ -192,20 +236,33 @@ function toast(text, ms = 1400) {
 }
 
 // ---------- modal ----------
+function syncInput() {
+  view.enabled = !!run && run.phase === 'play' && !busy && el.modal.hidden && !el.game.hidden;
+}
+
 function openModal(html, { center = false } = {}) {
   closeTip();
+  view.cancelDrag();
   el.modal.classList.toggle('center', center);
   el.sheet.innerHTML = html;
+  el.sheet.scrollTop = 0;
   el.modal.hidden = false;
-  view.enabled = false;
+  // swallow the tail of a double tap that opened this sheet
+  el.sheet.style.pointerEvents = 'none';
+  setTimeout(() => { el.sheet.style.pointerEvents = ''; }, 280);
+  syncInput();
   const first = el.sheet.querySelector('[data-autofocus]');
-  if (first) setTimeout(() => first.focus({ preventScroll: true }), 50);
+  if (first) setTimeout(() => first.focus({ preventScroll: true }), 60);
   return el.sheet;
 }
 function closeModal() {
   el.modal.hidden = true;
   el.sheet.innerHTML = '';
-  view.enabled = run && run.phase === 'play' && !busy;
+  syncInput();
+}
+function once(fn) {
+  let used = false;
+  return (...a) => { if (used) return; used = true; fn(...a); };
 }
 const on = (root, sel, fn) => root.querySelectorAll(sel).forEach((n) => n.addEventListener('click', (e) => { unlock(); sfx.ui(); fn(e, n); }));
 
@@ -213,29 +270,43 @@ const on = (root, sel, fn) => root.querySelectorAll(sel).forEach((n) => n.addEve
 function showScreen(name) {
   el.title.hidden = name !== 'title';
   el.game.hidden = name !== 'game';
-  if (name === 'game') requestAnimationFrame(() => view.resize());
+  view.cancelDrag();
+  // lay out synchronously so anything positioned on the hoop this frame lands correctly
+  if (name === 'game') view.resize();
+  syncInput();
+}
+
+function yesterdayKey() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return R.dailySeed(d).key;
 }
 
 function titleScreen() {
   run = null;
-  view.enabled = false;
+  busy = false;
+  if (tallyJob) tallyJob.flush();
   closeModal();
   showScreen('title');
   const save = store.loadRun();
-  const valid = R.isValidSave(save) && !['over', 'victory'].includes(save.phase);
+  const valid = R.isValidSave(save) && save.phase !== 'over';
   const cont = $('#btn-continue');
   cont.hidden = !valid;
   if (valid) {
-    const d = save.day > R.DAYS ? `밤샘 ${save.day - R.DAYS}일째` : `장날 ${save.day}`;
-    cont.querySelector('.sub').textContent = `${d} · ${R.ORDER_KINDS[save.orderIdx].name}${save.mode === 'daily' ? ' · 오늘의 의뢰' : ''}`;
+    const what = save.phase === 'victory' ? '보자기 완성 · 밤샘 작업 가능' : `${dayName(save.day)} · ${R.ORDER_KINDS[save.orderIdx].name}`;
+    $('.sub', cont).textContent = what + (save.mode === 'daily' ? ' · 오늘의 의뢰' : '');
   }
   const { key } = R.dailySeed();
   const today = meta.daily[key];
-  const dailyBtn = $('#btn-daily');
-  dailyBtn.querySelector('.sub').textContent = today ? `오늘 최고: ${today.label}` : '모두가 같은 판을 짓는 하루';
+  const ds = meta.dailyStreak;
+  const streakOn = ds && (ds.last === key || ds.last === yesterdayKey()) && ds.count > 0;
+  $('.sub', $('#btn-daily')).textContent = today ? `오늘 기록: ${today.label}` : '모두가 같은 판을 짓는 하루';
+  const stamp = $('#daily-stamp');
+  stamp.hidden = !streakOn;
+  if (streakOn) stamp.textContent = `${ds.count}일 연속`;
   $('#codex-count').textContent = `${meta.discovered.length}/${TOOL_IDS.length}`;
   $('#best-line').textContent = meta.runs
-    ? `최고 기록 ${meta.bestDay > R.DAYS ? `밤샘 ${meta.bestDay - R.DAYS}일` : `장날 ${meta.bestDay || 1}`} · 최고 한 땀 ${fmt(meta.bestHand)}`
+    ? `최고 ${meta.bestDay > R.DAYS ? `밤샘 ${meta.bestDay - R.DAYS}일` : `장날 ${meta.bestDay || 1}`} · 최고 한 땀 ${fmt(meta.bestHand)} · 완성 ${meta.wins}회`
     : '조각을 이어 손님의 보자기를 지어 주세요';
   $('#btn-sound').textContent = settings.sound ? '소리 켬' : '소리 끔';
   titleArt.start();
@@ -250,13 +321,14 @@ function startRun(mode) {
   run = R.newRun(opts);
   meta.runs += 1;
   store.saveMeta(meta);
+  persist();
   enterGame();
-  showGift();
+  showIntro();
 }
 
 function continueRun() {
   const save = store.loadRun();
-  if (!R.isValidSave(save)) { titleScreen(); return; }
+  if (!R.isValidSave(save)) { store.clearRun(); titleScreen(); return; }
   run = save;
   enterGame();
   resumePhase();
@@ -264,12 +336,15 @@ function continueRun() {
 
 function enterGame() {
   titleArt.stop();
+  busy = false;
+  pendingScore = 0;
+  tallyJob = null;
   showScreen('game');
-  shownScore = hudScore = run.order ? run.order.score : 0;
+  shownScore = run.order ? run.order.score : 0;
   el.score.textContent = fmt(shownScore);
+  el.tally.classList.remove('show', 'preview');
   view.setBoard(run.board);
   view.setTray(run.tray, trayFits(run.board, run.tray), false);
-  view.boss = run.order && run.order.boss;
   renderHud();
 }
 
@@ -277,14 +352,19 @@ function resumePhase() {
   switch (run.phase) {
     case 'gift': return showGift();
     case 'intro': return showIntro();
-    case 'play': closeModal(); view.enabled = true; renderHud(); if (run.order.stuck) stuckHint(); return;
+    case 'play':
+      closeModal();
+      renderHud();
+      if (run.order.stuck) stuckHint();
+      return undefined;
     case 'reward': return showReward();
     case 'shop': return showShop();
+    case 'victory': return showEnd(true);
     default: return titleScreen();
   }
 }
 
-function toolCard(id, { action = '', price = null, sold = false, locked = false, inst = null } = {}) {
+function toolCard(id, { action = '', sold = false, locked = false, inst = null } = {}) {
   const def = TOOLS[id];
   const desc = locked ? '아직 만나지 못한 도구' : inst ? toolDesc(inst) : def.desc({ data: def.init ? def.init() : {} });
   return `<div class="card r${def.rarity}${sold ? ' sold' : ''}${locked ? ' locked' : ''}">
@@ -295,21 +375,20 @@ function toolCard(id, { action = '', price = null, sold = false, locked = false,
 
 function showGift() {
   hint(null);
-  view.setBoard(run.board);
-  const html = `<div class="eyebrow">첫 손님</div><h2>선물을 하나 고르세요</h2>
-    <p class="lead">바느질 도구는 점수를 키우는 비결이에요.<br>도구는 최대 ${MAX_TOOLS}개까지 들 수 있어요.</p>
+  const html = `<div class="eyebrow">첫 손님의 선물</div><h2>도구를 하나 고르세요</h2>
+    <p class="lead">바느질 도구는 칩과 배수를 키워 줘요.<br>도구는 ${MAX_TOOLS}개까지 들 수 있고, 장터에서 사고팔 수 있어요.</p>
     <div class="cards">${run.gift.map((id, i) => toolCard(id, { action: `<button class="btn btn-gold btn-small" data-gift="${i}" ${i === 0 ? 'data-autofocus' : ''}>고르기</button>` })).join('')}</div>`;
   const s = openModal(html);
-  on(s, '[data-gift]', (e, n) => {
+  on(s, '[data-gift]', once((e, n) => {
     const id = run.gift[+n.dataset.gift];
     R.chooseGift(run, +n.dataset.gift);
     discover(id);
     sfx.buy();
     persist();
     renderHud();
-    fireTool(run.tools.length - 1, '획득!', 'xmult');
-    showIntro();
-  });
+    showShop();
+    if (!meta.toolTip) { meta.toolTip = true; store.saveMeta(meta); pendingHint = '위의 도구를 누르면 효과를 볼 수 있어요'; }
+  }));
 }
 
 function dayTrack() {
@@ -323,49 +402,66 @@ function dayTrack() {
   return html + '</div>';
 }
 
+/** Small/big orders start immediately with a banner; boss orders get a card with the rule. */
 function showIntro() {
   hint(null);
   const o = run.order;
   view.setBoard(run.board);
   view.setTray([null, null, null], [true, true, true], false);
-  shownScore = hudScore = 0;
+  shownScore = 0;
+  pendingScore = 0;
   el.score.textContent = '0';
   renderHud();
-  const boss = o.boss ? R.BOSSES[o.boss] : null;
+  if (!o.boss) {
+    closeModal();
+    begin();
+    const mid = view.cellCenterApp(3.5, 3.5);
+    view.text(`${dayLabel()} · ${kindName(o.kind)}`, mid.x, mid.y - view.cell * 0.9, { size: 24, color: '#a3abc8', dur: 1300, rise: 8, pop: 1.1 });
+    view.text(`목표 ${fmt(o.target)}`, mid.x, mid.y + view.cell * 0.2, { size: 40, color: '#e7b33a', dur: 1300, rise: 8, pop: 1.3, delay: 80 });
+    sfx.ui();
+    return;
+  }
+  const boss = R.BOSSES[o.boss];
   const html = `<div class="eyebrow">${dayLabel()}${run.day <= R.DAYS ? ` / ${R.DAYS}` : ''}</div><h2>${kindName(o.kind)}</h2>
     <div class="big-target"><span class="num">${fmt(o.target)}</span><small>점 이상 지어 주세요</small></div>
-    <div class="facts"><span class="fact">조각 <b>${o.patchesLeft}</b></span><span class="fact">버리기 <b>${o.discardsLeft}</b></span><span class="fact">보상 <b>${R.ORDER_KINDS[o.kind].reward}</b>닢</span></div>
-    ${boss ? `<div class="boss-card"><span class="seal">${boss.name[0]}</span><div><b>${boss.name}</b><span>${boss.desc}</span></div></div>` : ''}
+    <div class="facts"><span class="fact">조각 <b>${o.patchesLeft}</b></span><span class="fact">바꾸기 <b>${o.discardsLeft}</b></span><span class="fact">보상 <b>${R.ORDER_KINDS[o.kind].reward}</b>닢</span></div>
+    <div class="boss-card"><span class="seal">${boss.name[0]}</span><div><b>${boss.name}</b><span>${boss.desc}</span></div></div>
     ${dayTrack()}
     <div class="actions"><button class="btn btn-seal" id="go" data-autofocus>바느질 시작</button></div>`;
   const s = openModal(html, { center: true });
-  on(s, '#go', () => {
-    closeModal();
-    const ev = R.beginOrder(run);
-    persist();
-    view.setTray(run.tray, trayFits(run.board, run.tray));
-    renderHud();
-    view.enabled = true;
-    if (!meta.tutorial && run.day === 1 && run.orderIdx === 0) { hintStage = 1; hint('조각을 끌어 수틀에 놓으세요'); }
-    if (ev.some((e) => e.type === 'stuck')) stuckHint();
-  });
+  on(s, '#go', once(() => { closeModal(); begin(); }));
+}
+
+function begin() {
+  const ev = R.beginOrder(run);
+  persist();
+  view.setTray(run.tray, trayFits(run.board, run.tray));
+  renderHud();
+  syncInput();
+  if (!meta.tutorial && run.day === 1 && run.orderIdx === 0) { hintStage = 1; hint('조각을 끌어 수틀에 놓으세요'); }
+  else if (pendingHint) { hint(pendingHint, 3200); pendingHint = null; }
+  if (ev.some((e) => e.type === 'stuck')) stuckHint();
+  if (ev.some((e) => e.type === 'fail')) playEvents(ev.filter((e) => e.type === 'fail'));
 }
 
 function stuckHint() {
-  hint('놓을 자리가 없어요. 버리기로 조각을 바꾸세요');
+  hint('놓을 자리가 없어요. 아래 「조각 바꾸기」를 누르세요');
   renderHud();
 }
 
 // ---------- play ----------
-view.handlers.canDrag = () => !busy && run && run.phase === 'play';
-view.handlers.pickup = () => { unlock(); sfx.pick(); haptic(6); closeTip(); };
+view.handlers.canDrag = () => !busy && !!run && run.phase === 'play' && el.modal.hidden;
+view.handlers.pickup = () => { unlock(); sfx.pick(); haptic(6); closeTip(); lastHoverKey = null; };
 view.handlers.cancel = (i, wasValid) => { if (!wasValid) sfx.invalid(); showPreview(null); };
 view.handlers.hover = (h) => showPreview(h);
-view.handlers.drop = (i, r, c) => {
-  if (busy || !run || run.phase !== 'play') return false;
+view.handlers.drop = (i, r, c, piece) => {
+  if (busy || !run || run.phase !== 'play' || !el.modal.hidden) return false;
+  // the tray may have changed under the finger (discard); never place a different patch
+  if (JSON.stringify(run.tray[i]) !== JSON.stringify(piece)) return false;
   const res = R.place(run, i, r, c);
   if (!res.ok) return false;
   showPreview(null);
+  if (res.events.some((e) => e.type === 'fail')) recordRun(false);
   persist();
   playEvents(res.events);
   return true;
@@ -373,30 +469,45 @@ view.handlers.drop = (i, r, c) => {
 
 function showPreview(h) {
   if (!h || !run || run.phase !== 'play') {
-    el.tally.classList.remove('show', 'preview');
+    if (!tallyJob) el.tally.classList.remove('show', 'preview');
     el.ghost.style.width = '0';
+    el.ghost.classList.remove('win');
+    if (run && run.order) setStreak(run.order.streak);
     return;
   }
   const pv = R.preview(run, h.i, h.r, h.c);
   if (!pv) return;
   const o = run.order;
   el.ghost.style.width = Math.min(100, ((o.score + pv.score) / o.target) * 100) + '%';
+  el.ghost.classList.toggle('win', pv.completes);
   if (pv.lines.length) {
-    el.tally.classList.add('show', 'preview');
-    el.tally.innerHTML = `<span class="chips">${fmt(pv.chips)}</span><span class="x">×</span><span class="mult">${fmtMult(pv.mult)}</span><span class="label">+${fmt(pv.score)}</span>`;
+    setStreak(pv.streak, 'up');
+    if (!tallyJob) {
+      el.tally.classList.add('show', 'preview');
+      el.tally.innerHTML = tallyHtml(fmt(pv.chips), fmtMult(pv.mult), pv.completes ? '주문 완료!' : `+${fmt(pv.score)}`, pv.completes);
+    }
+    const key = `${h.i}:${h.r}:${h.c}`;
+    if (key !== lastHoverKey) { lastHoverKey = key; sfx.hover(pv.lines.length); }
   } else {
-    el.tally.classList.remove('show', 'preview');
+    setStreak(o.streak, pv.streakBreaks ? 'warn' : '');
+    if (!tallyJob) el.tally.classList.remove('show', 'preview');
+    lastHoverKey = null;
   }
+}
+
+function tallyHtml(chips, mult, label, win = false) {
+  return `<span class="chips"><small>칩</small><em>${chips}</em></span><span class="x">×</span><span class="mult"><small>배수</small><em>${mult}</em></span><span class="label${win ? ' win' : ''}">${label}</span>`;
 }
 
 el.discardBtn.addEventListener('click', () => {
   unlock();
-  if (busy || !run || run.phase !== 'play') return;
+  if (busy || !run || run.phase !== 'play' || view.drag) return;
   const ev = R.discard(run);
   if (!ev.length) return;
   sfx.pick();
   haptic(10);
   hint(null);
+  if (ev.some((e) => e.type === 'fail')) recordRun(false);
   persist();
   playEvents(ev);
 });
@@ -404,146 +515,168 @@ el.discardBtn.addEventListener('click', () => {
 el.pause.addEventListener('click', () => { unlock(); sfx.ui(); showPause(); });
 
 async function playEvents(events) {
-  busy = true;
-  view.enabled = false;
-  try {
-    for (const ev of events) {
-      switch (ev.type) {
-        case 'place':
-          lastPlaced = ev;
-          view.placePiece(ev);
-          sfx.drop(SHAPE_BY_ID[ev.piece.shape].size);
-          haptic(8);
-          break;
-        case 'toolGrow':
-          if (ev.late) fireTool(ev.slot, '성장!', 'xmult');
-          break;
-        case 'score':
-          await scoreSequence(ev);
-          break;
-        case 'tray':
-          view.setTray(run.tray, trayFits(run.board, run.tray));
-          break;
-        case 'discard':
-          view.setTray([null, null, null], [true, true, true], false);
-          await view.wait(80);
-          break;
-        case 'stuck':
-          view.setTray(run.tray, trayFits(run.board, run.tray), false);
-          stuckHint();
-          break;
-        case 'won':
-          await winSequence();
-          break;
-        case 'fail':
-          await failSequence(ev);
-          break;
-        default:
-      }
-    }
-  } finally {
-    busy = false;
-    renderHud();
-    if (run && run.phase === 'play') {
-      view.setTray(run.tray, trayFits(run.board, run.tray), false);
-      view.enabled = el.modal.hidden;
+  for (const ev of events) {
+    switch (ev.type) {
+      case 'place':
+        lastPlaced = ev;
+        view.placePiece(ev);
+        sfx.drop(SHAPE_BY_ID[ev.piece.shape].size);
+        haptic(8);
+        break;
+      case 'toolGrow':
+        if (ev.late) {
+          if (tallyJob) tallyJob.after.push(() => fireTool(ev.slot, '성장!', 'xmult'));
+          else fireTool(ev.slot, '성장!', 'xmult');
+        }
+        break;
+      case 'score':
+        scoreEvent(ev);
+        break;
+      case 'tray':
+        view.setTray(run.tray, trayFits(run.board, run.tray));
+        break;
+      case 'discard':
+        view.setTray([null, null, null], [true, true, true], false);
+        break;
+      case 'stuck':
+        stuckHint();
+        break;
+      case 'won':
+        busy = true;
+        syncInput();
+        if (tallyJob) await tallyJob.done;
+        await winSequence();
+        break;
+      case 'fail':
+        busy = true;
+        syncInput();
+        if (tallyJob) await tallyJob.done;
+        await failSequence(ev);
+        break;
+      default:
     }
   }
+  if (run && run.phase === 'play') {
+    view.setTray(run.tray, trayFits(run.board, run.tray), false);
+    renderHud();
+  }
+  syncInput();
 }
 
-async function scoreSequence(ev) {
+function scoreEvent(ev) {
   const { result, lines } = ev;
-  const o = run.order;
   if (!lines.length) {
-    // small trickle for plain placements
     if (lastPlaced) {
       const cs = lastPlaced.cells;
       const p = view.cellCenterApp(cs.reduce((a, q) => a + q[0], 0) / cs.length, cs.reduce((a, q) => a + q[1], 0) / cs.length);
       view.text(`+${result.score}`, p.x, p.y - view.cell * 0.4, { size: 18, color: '#f4ead3', dur: 600, rise: 26, pop: 1.2 });
     }
-    setBar(o.score);
+    setBar();
     if (hintStage === 1) { hintStage = 2; hint('가로나 세로 한 줄을 채우면 꿰매져요'); }
+    if (run.order.streak === 0 && ev.streak === 0 && el.streak && !el.streak.hidden) setStreak(0);
     return;
   }
-  if (hintStage === 2 || hintStage === 1) { hintStage = 3; hint('목표 점수를 넘기면 주문 완료!', 2600); meta.tutorial = true; store.saveMeta(meta); }
-  else if (!el.hint.textContent.startsWith('목표')) hint(null);
-
-  // --- needles & cells
-  const sp = speed();
-  const plan = await view.clearLines(lines, ev.streak);
+  hint(null);
+  if (tallyJob) tallyJob.flush();
+  pendingScore += result.score;
+  const plan = view.clearLines(lines, ev.streak);
   plan.stitchTimes.forEach((t, k) => setTimeout(() => { sfx.stitch(k, ev.streak); haptic(12); }, t));
   view.shake(1 + lines.length * 0.6);
+  tallyJob = startTally(ev);
+}
 
-  // --- tally
-  const steps = result.steps;
-  let chips = 0;
-  let mult = 0;
-  const tally = el.tally;
-  tally.classList.remove('preview');
-  tally.classList.add('show');
-  tally.innerHTML = '<span class="chips">0</span><span class="x">×</span><span class="mult">0</span><span class="label"></span>';
-  const cEl = $('.chips', tally);
-  const mEl = $('.mult', tally);
-  const lEl = $('.label', tally);
-  const boardMid = view.cellCenterApp(3.5, 3.5);
-  let tick = 0;
-  const stepMs = Math.max(55, Math.min(120, 900 / steps.length)) * sp;
-  for (const st of steps) {
-    let label = '';
-    if (st.src === 'lines') { chips = st.chips; mult = st.mult; label = `${st.lines}줄 솔기`; }
-    else if (st.src === 'streak') {
-      mult += st.mult;
-      label = `연속 ${st.streak}`;
-      view.text(`연속 ${st.streak}!`, boardMid.x, view.boardRectInApp().y + view.cell * 1.2, { size: 30, color: '#e7b33a', dur: 900 });
-    } else if (st.src === 'perfect') {
-      chips += st.chips;
-      label = '판을 다 비웠어요!';
-      sfx.perfect();
-      view.text('판 비움!', boardMid.x, boardMid.y, { size: 46, color: '#f4ead3', dur: 1200, pop: 1.8 });
-      view.confetti(40);
-    } else if (st.src === 'mono') {
-      mult *= st.xmult;
-      label = '단색 솔기 ×2';
-      view.text('단색 솔기!', boardMid.x, boardMid.y - view.cell * 1.5, { size: 32, color: '#f5c75a', dur: 900 });
-    } else if (st.src === 'boss') {
-      mult *= st.xmult;
-      label = '깐깐한 눈 ×0.5';
-    } else {
-      // tool effect
-      if (st.chips) { chips += st.chips; fireTool(st.slot, `+${st.chips} 칩`, 'chips'); }
-      if (st.mult) { mult += st.mult; fireTool(st.slot, `+${fmtMult(st.mult)} 배수`, 'mult'); }
-      if (st.xmult) { mult *= st.xmult; fireTool(st.slot, `×${fmtMult(st.xmult)}`, 'xmult'); }
-      label = TOOLS[st.src].name;
+/** Balatro-style tally. Interruptible: a new clear flushes the old one straight to its slam. */
+function startTally(ev) {
+  const { result, lines } = ev;
+  const job = { flushed: false, after: [], wake: null };
+  job.flush = () => { job.flushed = true; if (job.wake) job.wake(); };
+  const sleep = (ms) => new Promise((res) => {
+    if (job.flushed) { res(); return; }
+    const t = setTimeout(res, ms);
+    job.wake = () => { clearTimeout(t); res(); };
+  });
+  const teach = !meta.tallyTaught;
+  job.done = (async () => {
+    const sp = speed() * (teach ? 2 : 1);
+    const steps = result.steps;
+    let chips = 0;
+    let mult = 0;
+    const tally = el.tally;
+    tally.classList.remove('preview');
+    tally.classList.add('show');
+    tally.innerHTML = tallyHtml('0', '0', '');
+    const cEl = $('.chips em', tally);
+    const mEl = $('.mult em', tally);
+    const lEl = $('.label', tally);
+    const boardMid = view.cellCenterApp(3.5, 3.5);
+    const topY = view.boardRectInApp().y + view.cell * 1.2;
+    if (teach) hint('칩 × 배수 = 점수! 도구가 칩과 배수를 키워요', 3600);
+    const stepMs = Math.max(60, Math.min(120, 900 / steps.length)) * sp;
+    let tick = 0;
+    for (const st of steps) {
+      if (job.flushed) break;
+      let label = '';
+      if (st.src === 'lines') { chips = st.chips; mult = st.mult; label = `${st.lines}줄 솔기 · ${st.cells}칸`; }
+      else if (st.src === 'streak') {
+        mult += st.mult;
+        label = `연속 ${st.streak}`;
+        view.text(`연속 ${st.streak}!`, boardMid.x, topY, { size: 30, color: '#e7b33a', dur: 900 });
+      } else if (st.src === 'perfect') {
+        chips += st.chips;
+        label = '판을 다 비웠어요!';
+        sfx.perfect();
+        view.text('판 비움!', boardMid.x, boardMid.y, { size: 46, color: '#f4ead3', dur: 1200, pop: 1.6 });
+        view.confetti(40);
+      } else if (st.src === 'mono') {
+        mult *= st.xmult;
+        label = '단색 솔기 ×2';
+        view.text('단색 솔기!', boardMid.x, boardMid.y - view.cell * 1.5, { size: 32, color: '#f5c75a', dur: 900 });
+      } else if (st.src === 'boss') {
+        mult *= st.xmult;
+        label = '깐깐한 눈 ×0.5';
+      } else {
+        if (st.chips) { chips += st.chips; fireTool(st.slot, `+${st.chips} 칩`, 'chips'); }
+        if (st.mult) { mult += st.mult; fireTool(st.slot, `+${fmtMult(st.mult)} 배수`, 'mult'); }
+        if (st.xmult) { mult *= st.xmult; fireTool(st.slot, `×${fmtMult(st.xmult)}`, 'xmult'); }
+        label = TOOLS[st.src].name;
+      }
+      cEl.textContent = fmt(chips);
+      mEl.textContent = fmtMult(mult);
+      lEl.textContent = label;
+      if (st.chips) bump(cEl.parentNode);
+      if (st.mult || st.xmult) bump(mEl.parentNode);
+      if (st.xmult) sfx.mult(tick); else sfx.tick(tick);
+      tick++;
+      await sleep(stepMs);
     }
-    cEl.textContent = fmt(chips);
-    mEl.textContent = fmtMult(mult);
-    lEl.textContent = label;
-    if (st.chips) bump(cEl);
-    if (st.mult || st.xmult) bump(mEl);
-    if (st.xmult) sfx.mult(tick); else sfx.tick(tick);
-    tick++;
-    await view.wait(stepMs / sp);
-  }
-  cEl.textContent = fmt(result.chips);
-  mEl.textContent = fmtMult(result.mult);
-  await view.wait(Math.max(0, plan.total / view.speed - steps.length * stepMs / sp) * 0.4);
+    cEl.textContent = fmt(result.chips);
+    mEl.textContent = fmtMult(result.mult);
+    if (!job.flushed) await sleep(120 * sp);
 
-  // --- slam
-  const power = Math.log10(Math.max(10, result.score)) - 1;
-  const size = Math.min(64, 30 + power * 10);
-  view.text(`+${fmt(result.score)}`, boardMid.x, boardMid.y, { size, color: '#e7b33a', dur: 800, rise: 20, pop: 1.7 });
-  view.shake(1.5 + power * 1.4);
-  sfx.slam(0.6 + power * 0.4);
-  haptic(result.score > 2000 ? [20, 30, 40] : 25);
-  if (result.score >= Math.max(1000, run.order.target * 0.5)) flash();
-  const sr = el.score.getBoundingClientRect();
-  const ar = app.getBoundingClientRect();
-  view.flyTo(boardMid.x, boardMid.y, sr.left - ar.left + 30, sr.top - ar.top + 14, '#e7b33a', Math.min(14, 4 + lines.length * 3));
-  await view.wait(420);
-  tally.classList.remove('show');
-  bump(el.score);
-  setBar(o.score);
-  view.finishClear(run.board);
+    // slam
+    const power = Math.log10(Math.max(10, result.score)) - 1;
+    const size = Math.min(64, 30 + power * 10);
+    view.text(`+${fmt(result.score)}`, boardMid.x, boardMid.y, { size, color: '#e7b33a', dur: 800, rise: 20, pop: 1.6 });
+    view.shake(1.5 + power * 1.4);
+    sfx.slam(0.6 + power * 0.4);
+    haptic(result.score > 2000 ? [20, 30, 40] : 25);
+    if (run && run.order && result.score >= Math.max(1000, run.order.target * 0.5)) flash();
+    const sr = el.score.getBoundingClientRect();
+    const ar = app.getBoundingClientRect();
+    view.flyTo(boardMid.x, boardMid.y, sr.left - ar.left + 30, sr.top - ar.top + 14, '#e7b33a', Math.min(14, 4 + lines.length * 3));
+    if (teach) { meta.tallyTaught = true; meta.tutorial = true; store.saveMeta(meta); }
+    if (!job.flushed) await sleep(380);
+    pendingScore = Math.max(0, pendingScore - result.score);
+    if (run && run.order) setBar();
+    bump(el.score);
+    job.after.forEach((f) => f());
+    if (tallyJob === job) {
+      tallyJob = null;
+      el.tally.classList.remove('show');
+      if (hintStage === 2 || hintStage === 1) { hintStage = 3; hint('목표 점수를 넘기면 주문 완료!', 2600); }
+    }
+  })();
+  return job;
 }
 
 function flash() {
@@ -554,15 +687,13 @@ function flash() {
 }
 
 async function winSequence() {
-  view.enabled = false;
   hint(null);
-  await view.wait(250);
+  await view.wait(200);
   const mid = view.cellCenterApp(3.5, 3.5);
   view.text('주문 완료!', mid.x, mid.y, { size: 52, color: '#f4ead3', dur: 1400, pop: 1.4, rise: 10 });
   sfx.win();
   haptic([30, 40, 30, 40, 60]);
   view.confetti(80);
-  // remaining patches fly into the coin counter
   const left = Math.min(5, run.order.patchesLeft);
   const cr = el.coins.getBoundingClientRect();
   const ar = app.getBoundingClientRect();
@@ -570,24 +701,25 @@ async function winSequence() {
     setTimeout(() => {
       view.flyTo(mid.x, mid.y + view.cell * 4.5, cr.left - ar.left + 8, cr.top - ar.top + 8, '#e7b33a', 2);
       sfx.coin(i);
-    }, 500 + i * 120);
+    }, 450 + i * 110);
   }
-  await view.wait(1300 + left * 60);
+  await view.wait(1100 + left * 60);
+  busy = false;
   persist();
   showReward();
 }
 
 async function failSequence(ev) {
-  view.enabled = false;
   hint(null);
-  await view.wait(300);
+  await view.wait(250);
   sfx.fail();
   haptic([60, 40, 60]);
   view.shake(3);
   const mid = view.cellCenterApp(3.5, 3.5);
-  view.text(ev.reason === 'jam' ? '자리가 없어요' : '조각이 다 떨어졌어요', mid.x, mid.y, { size: 30, color: '#ff9b8c', dur: 1400, rise: 6 });
-  await view.wait(1100);
-  finishRun(false, ev);
+  view.text(ev.reason === 'jam' ? '놓을 자리가 없어요' : '조각이 다 떨어졌어요', mid.x, mid.y, { size: 30, color: '#ff9b8c', dur: 1400, rise: 6 });
+  await view.wait(1000);
+  busy = false;
+  showEnd(false, ev);
 }
 
 // ---------- reward / shop ----------
@@ -599,26 +731,25 @@ function showReward() {
     <div class="actions"><button class="btn btn-gold" id="collect" data-autofocus>받기</button></div>`;
   const s = openModal(html);
   s.querySelectorAll('.reward-line').forEach((n, i) => setTimeout(() => { n.classList.add('in'); sfx.coin(i); }, 120 + i * 140));
-  on(s, '#collect', () => {
-    const before = run.coins;
+  on(s, '#collect', once(() => {
     const ev = R.collectReward(run);
     sfx.buy();
     haptic(15);
     persist();
     el.coins.textContent = run.coins;
     bump(el.coins);
-    void before;
-    if (ev.some((e) => e.type === 'victory')) finishRun(true);
+    if (ev.some((e) => e.type === 'victory')) { recordRun(true); persist(); showEnd(true); }
+    else if (run.phase === 'gift') showGift();
     else showShop();
-  });
+  }));
 }
 
 function nextOrderPreview() {
   let day = run.day;
   let o = run.orderIdx + 1;
   if (o >= R.ORDERS_PER_DAY) { o = 0; day += 1; }
-  const label = day > R.DAYS ? `밤샘 ${day - R.DAYS}일째` : `장날 ${day}`;
-  return `${label} · ${R.ORDER_KINDS[o].name} · 목표 ${fmt(R.targetFor(day, o))}`;
+  const boss = o === 2 ? R.BOSSES[day <= R.DAYS ? run.bosses[day - 1] : R.BOSS_IDS[(day * 7) % R.BOSS_IDS.length]] : null;
+  return `${dayName(day)} · ${R.ORDER_KINDS[o].name} · 목표 <b>${fmt(R.targetFor(day, o))}</b>${boss ? `<br><span class="boss-note">${boss.name}: ${boss.desc}</span>` : ''}`;
 }
 
 function showShop() {
@@ -626,119 +757,145 @@ function showShop() {
   renderHud();
   const sh = run.shop;
   const full = run.tools.length >= MAX_TOOLS;
-  const html = `<div class="shop-head"><div><div class="eyebrow" style="text-align:left">${dayLabel()}</div><h2>장터</h2></div>
-      <span class="coin-pill">${glyph.coin}<span id="shop-coins">${run.coins}</span></span></div>
+  const html = `<div class="shop-head"><div><div class="eyebrow left">${dayLabel()}</div><h2>장터</h2></div>
+      <span class="coin-pill">${glyph.coin}<span>${run.coins}</span></span></div>
     <div class="cards">${sh.offers.map((of, i) => {
       const price = TOOLS[of.id].price;
       const can = !of.sold && !full && run.coins >= price;
-      const label = of.sold ? '팔림' : full ? '자리 없음' : `${price}닢`;
+      const label = of.sold ? '팔림' : full ? '칸 없음' : `${price}닢`;
       return toolCard(of.id, { sold: of.sold, action: `<button class="btn btn-small ${can ? 'btn-gold' : 'btn-ghost'} price" data-buy="${i}" ${can ? '' : 'disabled'}>${label}</button>` });
     }).join('')}</div>
-    <div class="row-actions"><button class="btn btn-ghost btn-small" id="reroll" ${run.coins < sh.rerollCost ? 'disabled' : ''}>새로 진열 · ${sh.rerollCost}닢</button></div>
+    <div class="row-actions"><button class="btn btn-ghost btn-small" id="reroll" ${run.coins < sh.rerollCost ? 'disabled' : ''}>${glyph.reroll}새로 진열 · ${sh.rerollCost}닢</button></div>
     <div class="section-label"><span>내 도구 ${run.tools.length}/${MAX_TOOLS}</span><span>눌러서 팔기</span></div>
     <div class="owned" id="owned"></div>
-    <div class="section-label"><span>다음 주문</span></div>
-    <div class="fact" style="margin-top:6px;text-align:center">${nextOrderPreview()}</div>
+    <div class="next-order"><small>다음 주문</small><div>${nextOrderPreview()}</div></div>
     <div class="actions"><button class="btn btn-seal" id="leave" data-autofocus>주문 받으러 가기</button></div>`;
   const s = openModal(html);
   const owned = $('#owned', s);
+  owned.dataset.sig = '';
   renderTools(owned, run.tools, {
+    sellTags: true,
     onTap: (i, b) => {
       const t = run.tools[i];
       const btn = document.createElement('button');
-      btn.className = 'btn btn-small btn-seal';
-      btn.style.marginTop = '10px';
-      btn.style.width = '100%';
+      btn.className = 'btn btn-small btn-seal tip-action';
       btn.textContent = `${sellPrice(t)}닢에 팔기`;
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', once(() => {
         R.sell(run, i);
         sfx.coin(0);
         haptic(10);
         persist();
         closeTip();
         showShop();
-      });
+      }));
       showToolTip(t, b, btn);
     },
   });
-  on(s, '[data-buy]', (e, n) => {
+  on(s, '[data-buy]', once((e, n) => {
     const i = +n.dataset.buy;
     const id = sh.offers[i].id;
     const res = R.buy(run, i);
-    if (!res.ok) { toast(res.reason === 'full' ? '도구 칸이 가득 찼어요. 먼저 하나를 파세요' : '엽전이 모자라요'); return; }
+    if (!res.ok) { toast(res.reason === 'full' ? '도구 칸이 가득 찼어요. 먼저 하나를 파세요' : '엽전이 모자라요'); showShop(); return; }
     discover(id);
     sfx.buy();
     haptic(15);
     persist();
     showShop();
-    renderHud();
     fireTool(run.tools.length - 1, '획득!', 'xmult');
-  });
-  on(s, '#reroll', () => {
-    if (R.reroll(run).ok) { sfx.coin(2); persist(); showShop(); }
-  });
-  on(s, '#leave', () => {
+  }));
+  on(s, '#reroll', once(() => {
+    if (R.reroll(run).ok) { sfx.coin(2); persist(); }
+    showShop();
+  }));
+  on(s, '#leave', once(() => {
     R.leaveShop(run);
     persist();
     showIntro();
-  });
+  }));
 }
 
 // ---------- end of run ----------
-function finishRun(victory, ev) {
+/** Writes records immediately (before any animation) so closing the app can't lose them. */
+function recordRun(victory) {
   const st = run.stats;
   const reachedDay = run.day;
-  const newBest = {
-    day: reachedDay > meta.bestDay,
-    hand: st.bestHand > meta.bestHand,
-  };
+  endInfo = { newDay: reachedDay > meta.bestDay, newHand: st.bestHand > meta.bestHand };
   meta.bestDay = Math.max(meta.bestDay, reachedDay);
   meta.bestOrders = Math.max(meta.bestOrders, st.orders);
   meta.bestHand = Math.max(meta.bestHand, st.bestHand);
   meta.bestStreak = Math.max(meta.bestStreak, st.bestStreak);
-  meta.clears += st.clears;
-  if (victory) meta.wins += 1;
+  meta.clears += st.clears - (run.reportedClears || 0);
+  run.reportedClears = st.clears;
+  if (victory && !run.winRecorded) { meta.wins += 1; run.winRecorded = true; }
   if (run.mode === 'daily' && run.dailyKey) {
     const prev = meta.daily[run.dailyKey];
-    const scoreKey = st.orders * 1e7 + Math.min(st.bestHand, 9999999);
-    if (!prev || scoreKey > prev.k) {
-      meta.daily[run.dailyKey] = { k: scoreKey, label: victory ? '완성' : `주문 ${st.orders}개` };
-    }
-    // keep the daily table small
+    const k = st.orders * 1e7 + Math.min(st.bestHand, 9999999);
+    if (!prev || k > prev.k) meta.daily[run.dailyKey] = { k, label: victory || st.orders >= 12 ? '완성' : `주문 ${st.orders}개` };
     const keys = Object.keys(meta.daily);
-    if (keys.length > 14) keys.slice(0, keys.length - 14).forEach((k) => delete meta.daily[k]);
+    if (keys.length > 14) keys.slice(0, keys.length - 14).forEach((key) => delete meta.daily[key]);
+    const ds = meta.dailyStreak || { last: null, count: 0 };
+    if (ds.last !== run.dailyKey) {
+      ds.count = ds.last === yesterdayKey() ? ds.count + 1 : 1;
+      ds.last = run.dailyKey;
+    }
+    meta.dailyStreak = ds;
   }
   store.saveMeta(meta);
-  persist();
+}
 
+function showEnd(victory, ev) {
+  if (!endInfo) endInfo = { newDay: false, newHand: false };
+  const st = run.stats;
   const grid = `<div class="stat-grid">
-    <div><small>도달</small><b>${dayLabel()}</b>${newBest.day ? '<span class="new">신기록</span>' : ''}</div>
+    <div><small>도달</small><b>${dayLabel()}</b>${endInfo.newDay ? '<span class="new">신기록</span>' : ''}</div>
     <div><small>완료한 주문</small><b>${st.orders}</b></div>
-    <div><small>최고 한 땀</small><b>${fmt(st.bestHand)}</b>${newBest.hand ? '<span class="new">신기록</span>' : ''}</div>
+    <div><small>최고 한 땀</small><b>${fmt(st.bestHand)}</b>${endInfo.newHand ? '<span class="new">신기록</span>' : ''}</div>
     <div><small>최고 연속</small><b>${st.bestStreak}</b></div></div>`;
+  const quilt = `<figure class="quilt"><canvas id="quilt" aria-label="이번 판의 조각보"></canvas><figcaption>이번 판의 조각보</figcaption></figure>`;
+  const share = run.mode === 'daily' ? '<button class="btn btn-ghost" id="share">결과 복사하기</button>' : '';
   let html;
   if (victory) {
     view.confetti(120);
     sfx.perfect();
     html = `<div class="eyebrow">${R.DAYS}일의 장이 끝났어요</div><h2>보자기 완성</h2>
-      <p class="lead">손님들이 모두 만족했어요. 밤을 새워 더 큰 주문에 도전할 수도 있어요.</p>${grid}
-      <div class="actions"><button class="btn btn-gold" id="endless" data-autofocus>밤샘 작업 이어가기</button>
+      <p class="lead">손님들이 모두 만족했어요. 밤을 새워 더 큰 주문에 도전할 수도 있어요.</p>
+      <div class="end-body">${quilt}${grid}</div>
+      <div class="actions"><button class="btn btn-gold" id="endless" data-autofocus>밤샘 작업 이어가기</button>${share}
       <button class="btn btn-ghost" id="home">처음으로</button></div>`;
   } else {
-    const short = Math.max(0, ev.short);
+    const short = Math.max(0, ev ? ev.short : 0);
     const near = short <= run.order.target * 0.1;
     html = `<div class="eyebrow">${dayLabel()} · ${kindName(run.order.kind)}</div><h2>${near ? '아깝다!' : '주문 실패'}</h2>
-      <p class="shortfall">목표까지 <b>${fmt(short)}</b>점 모자랐어요</p>${grid}
-      <div class="actions"><button class="btn btn-seal" id="again" data-autofocus>${run.mode === 'daily' ? '오늘의 의뢰 다시' : '다시 짓기'}</button>
+      <p class="shortfall">목표까지 <b>${fmt(short)}</b>점 모자랐어요</p>
+      <div class="end-body">${quilt}${grid}</div>
+      <div class="actions"><button class="btn btn-seal" id="again" data-autofocus>${run.mode === 'daily' ? '오늘의 의뢰 다시' : '다시 짓기'}</button>${share}
       <button class="btn btn-ghost" id="home">처음으로</button></div>`;
   }
   const s = openModal(html, { center: true });
-  on(s, '#again', () => startRun(run.mode));
-  on(s, '#home', () => titleScreen());
-  on(s, '#endless', () => {
+  requestAnimationFrame(() => drawQuilt($('#quilt', s), run));
+  on(s, '#again', once(() => { endInfo = null; startRun(run.mode); }));
+  on(s, '#home', once(() => { endInfo = null; titleScreen(); }));
+  on(s, '#endless', once(() => {
+    endInfo = null;
     R.continueEndless(run);
     persist();
     showShop();
+  }));
+  on(s, '#share', (e, n) => {
+    const d = new Date();
+    const text = shareText(run, `${d.getMonth() + 1}월 ${d.getDate()}일`);
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.className = 'share-text';
+      ta.value = text;
+      ta.readOnly = true;
+      n.after(ta);
+      ta.select();
+      toast('복사가 막혀 있어요. 글을 길게 눌러 복사하세요', 2600);
+    };
+    try {
+      navigator.clipboard.writeText(text).then(() => toast('결과를 복사했어요'), fallback);
+    } catch { fallback(); }
   });
 }
 
@@ -755,7 +912,7 @@ function bindSwitches(s) {
       settings[key] = !settings[key];
       n.setAttribute('aria-checked', settings[key]);
       store.saveSettings(settings);
-      after && after();
+      if (after) after();
       unlock();
       sfx.ui();
     });
@@ -766,8 +923,8 @@ function bindSwitches(s) {
 }
 
 function showPause() {
-  if (!run || busy) return;
-  const html = `<h2>잠시 쉬기</h2>
+  if (!run || busy || !el.modal.hidden) return;
+  const html = `<div class="eyebrow">바늘을 잠시 꽂아 두고</div><h2>잠시 쉬기</h2>
     ${switchRow('sw-sound', '소리', settings.sound)}${switchRow('sw-haptics', '진동', settings.haptics)}${switchRow('sw-fast', '빠른 연출', settings.fast)}
     <div class="actions"><button class="btn btn-seal" id="resume" data-autofocus>계속하기</button>
     <button class="btn btn-ghost" id="how">하는 방법</button>
@@ -783,10 +940,10 @@ function showHow(back) {
   const html = `<div class="eyebrow">하는 방법</div><h2>조각보 짓기</h2>
     <div class="how">
       <p><b>조각 놓기</b> — 아래 조각을 끌어 수틀에 놓아요. 놓을 때마다 남은 조각이 하나씩 줄어요.</p>
-      <p><b>솔기 꿰매기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 사라지고 점수가 나요. 여러 줄을 한 번에, 연달아 지울수록 커져요.</p>
-      <p><b>칩 × 배수</b> — 지운 칸이 칩, 줄 수와 연속이 배수예요. 한 줄이 한 색이면 단색 솔기 ×2.</p>
-      <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 조각을 놓을 데가 없으면 버리기로 바꿔요.</p>
-      <p><b>장터</b> — 품삯으로 바느질 도구를 사요. 도구 조합이 점수 엔진이에요. 엽전을 모아 두면 이자도 붙어요.</p>
+      <p><b>솔기 꿰매기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 사라지고 점수가 나요.</p>
+      <p><b>칩 × 배수</b> — 지운 칸이 칩, 지운 줄 수의 제곱과 연속 횟수가 배수예요. 두 줄을 한 번에 지우면 배수 4, 세 줄이면 9. 한 줄이 한 색이면 단색 솔기 ×2.</p>
+      <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 놓을 데가 없으면 「조각 바꾸기」로 트레이를 새로 받아요.</p>
+      <p><b>장터</b> — 품삯으로 바느질 도구를 사요. 도구 조합이 점수 엔진이에요. 엽전을 모아 두면 5닢마다 이자가 1닢 붙어요.</p>
     </div>
     <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>알겠어요</button></div>`;
   const s = openModal(html);
@@ -802,7 +959,8 @@ function showCodex() {
 }
 
 function showRecords() {
-  const html = `<div class="eyebrow">공방 기록</div><h2>지금까지</h2>
+  const days = Object.entries(meta.daily).slice(-7).reverse();
+  const html = `<div class="eyebrow">공방 일지</div><h2>지금까지</h2>
     <div class="stat-grid">
       <div><small>지은 판</small><b>${meta.runs}</b></div>
       <div><small>완성한 보자기</small><b>${meta.wins}</b></div>
@@ -811,98 +969,29 @@ function showRecords() {
       <div><small>최고 연속</small><b>${meta.bestStreak}</b></div>
       <div><small>꿰맨 솔기</small><b>${fmt(meta.clears)}</b></div>
     </div>
+    ${days.length ? `<div class="section-label"><span>오늘의 의뢰</span><span>${meta.dailyStreak ? `${meta.dailyStreak.count}일 연속` : ''}</span></div>
+    <div class="daily-list">${days.map(([k, v]) => `<div><span>${k.split('-').slice(1).join('/')}</span><b>${v.label}</b></div>`).join('')}</div>` : ''}
     <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>닫기</button></div>`;
   const s = openModal(html, { center: true });
   on(s, '#back', closeModal);
 }
 
-// ---------- title art: a bojagi assembling itself ----------
-const titleArt = (() => {
-  const cv = $('#title-art');
-  const g = cv.getContext('2d');
-  let raf = 0;
-  let t0 = 0;
-  const cols = ['blue', 'red', 'yellow', 'white', 'black'];
-  // irregular patchwork: rectangles splitting a 6×6 grid
-  const rects = [];
-  (function split(x, y, w, h, depth, seed) {
-    if (depth > 3 || w * h <= 2 || (depth > 1 && (seed % 3 === 0))) {
-      rects.push({ x, y, w, h, color: cols[(seed * 7 + x * 3 + y) % 5] });
-      return;
-    }
-    if (w >= h) { const k = 1 + (seed % (w - 1 || 1)); split(x, y, k, h, depth + 1, seed * 5 + 1); split(x + k, y, w - k, h, depth + 1, seed * 3 + 2); }
-    else { const k = 1 + (seed % (h - 1 || 1)); split(x, y, w, k, depth + 1, seed * 7 + 3); split(x, y + k, w, h - k, depth + 1, seed * 11 + 1); }
-  })(0, 0, 6, 6, 0, 4);
-  function frame(now) {
-    raf = requestAnimationFrame(frame);
-    if (!t0) t0 = now;
-    const dpr = Math.min(3, devicePixelRatio || 1);
-    const w = cv.clientWidth;
-    if (!w) return;
-    if (cv.width !== Math.round(w * dpr)) { cv.width = cv.height = Math.round(w * dpr); }
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, w, w);
-    const t = (now - t0) / 1000;
-    const pad = w * 0.12;
-    const u = (w - pad * 2) / 6;
-    g.save();
-    g.translate(w / 2, w / 2);
-    g.rotate(Math.sin(t * 0.4) * 0.04 + Math.PI / 4 * 0.12);
-    g.translate(-w / 2, -w / 2);
-    // knot ties on corners like a wrapped bojagi
-    rects.forEach((r, i) => {
-      const k = Math.max(0, Math.min(1, (t - i * 0.07) / 0.45));
-      if (k <= 0) return;
-      const e = 1 + 2.4 * (k - 1) ** 3 + 1.4 * (k - 1) ** 2;
-      const x = pad + r.x * u, y = pad + r.y * u, ww = r.w * u, hh = r.h * u;
-      g.save();
-      g.translate(x + ww / 2, y + hh / 2 + (1 - k) * 30);
-      g.scale(e, e);
-      g.translate(-ww / 2, -hh / 2);
-      paintPatch(g, r.color, ww, hh);
-      g.restore();
-    });
-    // seam stitches growing in after assembly
-    const sk = Math.max(0, Math.min(1, (t - rects.length * 0.07 - 0.2) / 0.8));
-    if (sk > 0) {
-      g.strokeStyle = 'rgba(244,234,211,.85)';
-      g.lineWidth = Math.max(1.5, u * 0.05);
-      g.setLineDash([u * 0.12, u * 0.09]);
-      g.strokeRect(pad - 3, pad - 3, (u * 6 + 6) * 1, (u * 6 + 6) * sk);
-      g.setLineDash([]);
-    }
-    g.restore();
-  }
-  return {
-    start() { cancelAnimationFrame(raf); t0 = 0; raf = requestAnimationFrame(frame); },
-    stop() { cancelAnimationFrame(raf); },
-  };
-})();
-
 // ---------- title buttons ----------
+function confirmReplace(title, go) {
+  const s = openModal(`<h2>${title}</h2><p class="lead">이어 짓던 판은 사라져요.</p>
+    <div class="row-actions"><button class="btn btn-ghost" id="no">취소</button><button class="btn btn-seal" id="yes" data-autofocus>시작</button></div>`, { center: true });
+  on(s, '#no', closeModal);
+  on(s, '#yes', once(() => { store.clearRun(); go(); }));
+}
+const hasLiveSave = () => { const s = store.loadRun(); return R.isValidSave(s) && s.phase !== 'over' ? s : null; };
+
 on(document, '#btn-continue', () => continueRun());
-on(document, '#btn-new', () => {
-  const save = store.loadRun();
-  if (R.isValidSave(save) && !['over', 'victory'].includes(save.phase)) {
-    const s = openModal(`<h2>새로 지을까요?</h2><p class="lead">이어 짓던 판은 사라져요.</p>
-      <div class="row-actions"><button class="btn btn-ghost" id="no">취소</button><button class="btn btn-seal" id="yes" data-autofocus>새로 짓기</button></div>`, { center: true });
-    on(s, '#no', closeModal);
-    on(s, '#yes', () => { store.clearRun(); startRun('normal'); });
-    return;
-  }
-  startRun('normal');
-});
+on(document, '#btn-new', () => (hasLiveSave() ? confirmReplace('새로 지을까요?', () => startRun('normal')) : startRun('normal')));
 on(document, '#btn-daily', () => {
-  const save = store.loadRun();
+  const save = hasLiveSave();
   const { key } = R.dailySeed();
-  if (R.isValidSave(save) && save.mode === 'daily' && save.dailyKey === key && !['over', 'victory'].includes(save.phase)) { continueRun(); return; }
-  if (R.isValidSave(save) && !['over', 'victory'].includes(save.phase)) {
-    const s = openModal(`<h2>오늘의 의뢰를 시작할까요?</h2><p class="lead">이어 짓던 판은 사라져요.</p>
-      <div class="row-actions"><button class="btn btn-ghost" id="no">취소</button><button class="btn btn-seal" id="yes" data-autofocus>시작</button></div>`, { center: true });
-    on(s, '#no', closeModal);
-    on(s, '#yes', () => { store.clearRun(); startRun('daily'); });
-    return;
-  }
+  if (save && save.mode === 'daily' && save.dailyKey === key) { continueRun(); return; }
+  if (save) { confirmReplace('오늘의 의뢰를 시작할까요?', () => startRun('daily')); return; }
   startRun('daily');
 });
 on(document, '#btn-codex', () => showCodex());
@@ -915,21 +1004,19 @@ on(document, '#btn-sound', (e, n) => {
   n.textContent = settings.sound ? '소리 켬' : '소리 끔';
 });
 
-document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) persist();
+  else resumeAudio();
+});
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && run && run.phase === 'play' && el.modal.hidden) showPause();
 });
 
 // hot-update hook for the artifact viewer: keep the run when code is republished
-if (window.claude && window.claude.hot && window.claude.hot.snapshot) {
-  try { window.claude.hot.snapshot(() => ({ run })); } catch { /* optional */ }
-}
+try { if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(() => ({ run })); } catch { /* optional */ }
 
-function boot() {
-  document.fonts && document.fonts.ready.then(() => view.resize());
-  titleScreen();
-}
-boot();
+if (document.fonts) document.fonts.ready.then(() => view.resize());
+titleScreen();
 
-// debug/test handle
-window.__bojagi = { get run() { return run; }, view, R, playEvents, shapes: SHAPE_BY_ID };
+// handle for automated tests
+window.__bojagi = { get run() { return run; }, view, R, shapes: SHAPE_BY_ID };

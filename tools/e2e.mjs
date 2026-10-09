@@ -19,14 +19,8 @@ await page.waitForTimeout(1600);
 await page.screenshot({ path: `${out}01-title-${W}x${H}.png` });
 
 await page.click('#btn-new');
-await page.waitForTimeout(500);
-await page.screenshot({ path: `${out}02-gift-${W}x${H}.png` });
-await page.click('[data-gift="0"]');
-await page.waitForTimeout(500);
-await page.screenshot({ path: `${out}03-intro-${W}x${H}.png` });
-await page.click('#go');
-await page.waitForTimeout(600);
-await page.screenshot({ path: `${out}04-play-${W}x${H}.png` });
+await page.waitForTimeout(700);
+await page.screenshot({ path: `${out}02-start-${W}x${H}.png` });
 
 async function bestMove() {
   return page.evaluate(() => {
@@ -57,18 +51,25 @@ for (let k = 0; k < MOVES * 3 && moves < MOVES; k++) {
     await page.waitForTimeout(900);
     await page.screenshot({ path: `${out}${String(shot++).padStart(2, '0')}-reward.png` });
     await page.click('#collect');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(700);
     continue;
   }
   if (phase === 'shop') {
     await page.screenshot({ path: `${out}${String(shot++).padStart(2, '0')}-shop.png` });
     const buy = await page.$('[data-buy]:not([disabled])');
-    if (buy) { await buy.click(); await page.waitForTimeout(300); }
+    if (buy) { await buy.click(); await page.waitForTimeout(400); }
     await page.click('#leave');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(700);
     continue;
   }
   if (phase === 'intro') { await page.click('#go'); await page.waitForTimeout(500); continue; }
+  if (phase === 'gift') {
+    await page.waitForTimeout(350);
+    await page.screenshot({ path: `${out}${String(shot++).padStart(2, '0')}-gift.png` });
+    await page.click('[data-gift="0"]');
+    await page.waitForTimeout(400);
+    continue;
+  }
   if (phase === 'over' || phase === 'victory') {
     await page.waitForTimeout(1500);
     await page.screenshot({ path: `${out}${String(shot++).padStart(2, '0')}-end.png` });

@@ -30,7 +30,7 @@ export const ENDLESS_GROWTH = 2.2;
 export const BOSSES = {
   knots: { name: '매듭', desc: '수틀에 매듭 8개가 박힌 채 시작' },
   ink: { name: '먹물', desc: '흑색 칸은 칩을 주지 않음' },
-  busy: { name: '바쁜 손', desc: '버리기를 쓸 수 없음' },
+  busy: { name: '바쁜 손', desc: '조각 바꾸기를 쓸 수 없음' },
   short: { name: '짧은 실', desc: '조각이 4개 적음' },
   big: { name: '큰 천', desc: '4칸 이상 조각만, 조각 2개 적음' },
   strict: { name: '깐깐한 눈', desc: '최종 배수가 절반' },
@@ -74,6 +74,7 @@ export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal'
     order: null,
     shop: null,
     reward: null,
+    history: [],
     endless: false,
     stats: { bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0 },
   };
@@ -125,6 +126,7 @@ export function prepareOrder(run) {
     clears: 0,
     stuck: false,
     best: 0,
+    colors: {},
   };
   run.board = emptyBoard();
   if (boss === 'knots') {
@@ -187,7 +189,18 @@ function checkStuck(run) {
   return failOrder(run, 'jam');
 }
 
+function dominantColor(o) {
+  let best = null;
+  for (const c of COLORS) if ((o.colors?.[c] || 0) > (o.colors?.[best] || 0)) best = c;
+  return best || 'white';
+}
+
+function logOrder(run, ok) {
+  (run.history ||= []).push({ kind: run.order.kind, ok, color: dominantColor(run.order), score: run.order.score });
+}
+
 function failOrder(run, reason) {
+  logOrder(run, false);
   run.phase = 'over';
   run.overReason = reason;
   return [{ type: 'fail', reason, short: run.order.target - run.order.score }];
@@ -202,7 +215,9 @@ export function preview(run, i, r, c) {
   const painted = paint(run.board, shape, r, c, p.color);
   const lines = fullLines(painted);
   const res = scorePlacement(run, painted, lines, shape, true);
-  return { lines, ...res.result };
+  const o = run.order;
+  const streakBreaks = !lines.length && o.streak > 0 && o.sinceClear + 1 >= 3;
+  return { lines, ...res.result, streak: res.ctx.streak, streakBreaks, completes: o.score + res.result.score >= o.target };
 }
 
 function scorePlacement(run, painted, lines, shape, dry) {
@@ -242,6 +257,7 @@ export function place(run, i, r, c) {
 
   const o = run.order;
   const events = [];
+  const lateGrow = [];
   // onPlace hooks (e.g. silk) fire before scoring so the patch you place counts.
   run.tools.forEach((t, slot) => {
     const def = TOOLS[t.id];
@@ -254,6 +270,8 @@ export function place(run, i, r, c) {
 
   run.tray[i] = null;
   o.patchesLeft -= 1;
+  o.colors[p.color] = (o.colors[p.color] || 0) + shape.size;
+  for (const cell of cleared) if (cell.color !== 'knot') o.colors[cell.color] = (o.colors[cell.color] || 0) + 1;
   run.stats.placed += 1;
   events.unshift({ type: 'place', tray: i, r, c, piece: p, cells: shape.cells.map(([dr, dc]) => [r + dr, c + dc]) });
 
@@ -266,7 +284,7 @@ export function place(run, i, r, c) {
     if (ctx.perfect) run.stats.perfects += 1;
     run.tools.forEach((t, slot) => {
       const def = TOOLS[t.id];
-      if (def.after && def.after(ctx, t)) events.push({ type: 'toolGrow', slot, late: true });
+      if (def.after && def.after(ctx, t)) lateGrow.push({ type: 'toolGrow', slot, late: true });
     });
   } else {
     o.sinceClear += 1;
@@ -281,6 +299,7 @@ export function place(run, i, r, c) {
     type: 'score', lines, cleared, result, streak: o.streak, perfect: ctx.perfect,
     painted, mono: ctx.monoLines,
   });
+  events.push(...lateGrow);
 
   if (o.score >= o.target) {
     events.push(...winOrder(run));
@@ -307,6 +326,7 @@ export function discard(run) {
 
 function winOrder(run) {
   const o = run.order;
+  logOrder(run, true);
   run.phase = 'reward';
   run.stats.orders += 1;
   const lines = [];

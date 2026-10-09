@@ -15,10 +15,10 @@
       <p class="best-line" id="best-line"></p>
       <button class="btn btn-gold" id="btn-continue" hidden><span>이어 짓기</span><span class="sub"></span></button>
       <button class="btn btn-seal" id="btn-new">새로 짓기</button>
-      <button class="btn" id="btn-daily"><span>오늘의 의뢰</span><span class="sub"></span></button>
+      <button class="btn" id="btn-daily"><span>오늘의 의뢰</span><span class="sub"></span><span class="stamp" id="daily-stamp" hidden></span></button>
       <div class="title-foot">
         <button class="btn btn-ghost btn-small" id="btn-codex">도감 <span id="codex-count"></span></button>
-        <button class="btn btn-ghost btn-small" id="btn-records">기록</button>
+        <button class="btn btn-ghost btn-small" id="btn-records">일지</button>
         <button class="btn btn-ghost btn-small" id="btn-how">방법</button>
         <button class="btn btn-ghost btn-small" id="btn-sound">소리 켬</button>
       </div>
@@ -32,22 +32,22 @@
     </header>
     <section class="order" aria-label="주문 진행">
       <div class="score-row"><span class="score" id="hud-score" aria-live="polite">0</span><span class="target">목표 <b id="hud-target">0</b></span></div>
+      <div class="tally" id="tally" aria-hidden="true"></div>
       <div class="bar" id="hud-bar"><div class="ghost" id="hud-ghost"></div><div class="fill" id="hud-fill"></div></div>
       <div class="stats">
         <div class="stat" id="stat-patches"><span id="ic-patch"></span><b id="hud-patches">0</b>조각</div>
-        <div class="stat"><b id="hud-discards">0</b>버리기</div>
         <div class="stat coins"><span id="ic-coin"></span><b id="hud-coins">0</b></div>
-        <div class="stat boss" id="hud-boss" hidden></div>
+        <div class="stat streak" id="hud-streak" hidden>연속 <b>0</b></div>
       </div>
+      <div class="boss-line" id="hud-boss" hidden></div>
     </section>
     <div class="tools" id="hud-tools" aria-label="바느질 도구"></div>
     <div class="stage" id="stage">
       <canvas id="cv" aria-label="수틀과 조각"></canvas>
-      <div class="tally" id="tally" aria-hidden="true"></div>
       <div class="hint" id="hint" role="status"></div>
     </div>
     <footer class="hud-bottom">
-      <button class="btn btn-discard" id="btn-discard">버리기 <b>2</b></button>
+      <button class="btn btn-discard" id="btn-discard"><span class="ic" id="ic-reroll"></span>조각 바꾸기 <b id="hud-discards">2</b></button>
     </footer>
   </section>
 

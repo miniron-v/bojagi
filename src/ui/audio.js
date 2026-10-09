@@ -28,7 +28,12 @@ export function unlock() {
       master.connect(comp).connect(ctx.destination);
     } catch { ctx = null; return; }
   }
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  // iOS reports 'interrupted' after backgrounding; resume from any non-running state
+  if (ctx.state !== 'running') ctx.resume().catch(() => {});
+}
+
+export function resumeAudio() {
+  if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
 }
 
 function ready() {
@@ -140,6 +145,7 @@ export const sfx = {
     tone(2093 + i * 40, 0.2, { type: 'sine', gain: 0.1, delay: 0.05 });
   },
   ui() { pluck(12, { gain: 0.14, bright: 0.8 }); },
+  hover(lines = 1) { pluck(4 + lines * 2, { gain: 0.1, bright: 0.9 }); },
   win() { [0, 2, 4, 5, 7, 9].forEach((s, i) => pluck(5 + s, { gain: 0.4, delay: i * 0.09, bright: 0.6 })); },
   fail() { [9, 7, 4, 2].forEach((s, i) => pluck(s, { gain: 0.38, delay: i * 0.16, bright: 0.3, bend: -0.04 })); },
   buy() { pluck(9, { gain: 0.3 }); pluck(12, { gain: 0.3, delay: 0.07 }); tone(1975, 0.15, { type: 'triangle', gain: 0.08, delay: 0.1 }); },
