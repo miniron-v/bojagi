@@ -1,0 +1,406 @@
+// Run state machine. Every function mutates `run` (plain JSON, saveable) and returns
+// an event list the UI replays as animation. No DOM / timing here.
+import { createRng, next, int, weighted, pick, shuffle, hashString } from './rng.js';
+import { SHAPES, SHAPE_BY_ID, COLORS } from './shapes.js';
+import { N, idx, emptyBoard, canPlace, fitsAnywhere, paint, fullLines, clearLines, filledCount } from './board.js';
+import { TOOLS, TOOL_IDS, MAX_TOOLS, makeTool, sellPrice } from './tools.js';
+import { evaluate } from './scoring.js';
+
+export const SAVE_VERSION = 1;
+export const DAYS = 4;
+export const ORDERS_PER_DAY = 3;
+export const BASE_PATCHES = 18;
+export const BASE_DISCARDS = 2;
+export const START_COINS = 4;
+export const REROLL_BASE = 3;
+
+export const ORDER_KINDS = [
+  { key: 'small', name: '작은 주문', reward: 3, scale: 1 },
+  { key: 'big', name: '큰 주문', reward: 4, scale: 1.5 },
+  { key: 'boss', name: '장인 의뢰', reward: 5, scale: 2 },
+];
+
+// Target for the small order of each day; big/boss multiply by ORDER_KINDS.scale.
+// Calibrated by tools/simulate.mjs.
+export const DAY_BASE = [300, 800, 1800, 4500];
+export const ENDLESS_GROWTH = 1.7;
+
+export const BOSSES = {
+  knots: { name: '매듭', desc: '수틀에 매듭 6개가 박힌 채 시작' },
+  ink: { name: '먹물', desc: '흑색 칸은 칩을 주지 않음' },
+  busy: { name: '바쁜 손', desc: '버리기를 쓸 수 없음' },
+  short: { name: '짧은 실', desc: '조각이 4개 적음' },
+  big: { name: '큰 천', desc: '4칸 이상 조각만 나옴' },
+  strict: { name: '깐깐한 눈', desc: '최종 배수가 절반' },
+};
+export const BOSS_IDS = Object.keys(BOSSES);
+
+export function targetFor(day, orderIdx) {
+  let base;
+  if (day <= DAYS) base = DAY_BASE[day - 1];
+  else base = DAY_BASE[DAYS - 1] * Math.pow(ENDLESS_GROWTH, day - DAYS);
+  const t = base * ORDER_KINDS[orderIdx].scale;
+  const mag = Math.pow(10, Math.max(1, Math.floor(Math.log10(t)) - 1));
+  return Math.round(t / mag) * mag;
+}
+
+export function dailySeed(date = new Date()) {
+  const key = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+  return { key, seed: hashString(`bojagi:${key}`) };
+}
+
+export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal', dailyKey = null } = {}) {
+  const rng = createRng(seed);
+  const bosses = [];
+  let pool = shuffle(rng, BOSS_IDS);
+  for (let d = 0; d < DAYS; d++) bosses.push(pool[d % pool.length]);
+  const run = {
+    v: SAVE_VERSION,
+    seed,
+    mode,
+    dailyKey,
+    rng,
+    day: 1,
+    orderIdx: 0,
+    phase: 'gift',
+    coins: START_COINS,
+    tools: [],
+    bosses,
+    gift: shuffle(rng, TOOL_IDS.filter((id) => TOOLS[id].rarity === 1)).slice(0, 2),
+    board: emptyBoard(),
+    tray: [null, null, null],
+    order: null,
+    shop: null,
+    reward: null,
+    endless: false,
+    stats: { bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0 },
+  };
+  return run;
+}
+
+export function chooseGift(run, i) {
+  if (run.phase !== 'gift') return [];
+  const id = run.gift[i];
+  if (id) run.tools.push(makeTool(id));
+  run.gift = null;
+  prepareOrder(run);
+  return [{ type: 'gift', id }];
+}
+
+export function bossOf(run) {
+  if (run.orderIdx !== 2) return null;
+  if (run.day <= DAYS) return run.bosses[run.day - 1];
+  return BOSS_IDS[(run.day * 7) % BOSS_IDS.length];
+}
+
+function toolSum(run, key) {
+  return run.tools.reduce((s, t) => s + (TOOLS[t.id][key] || 0), 0);
+}
+
+export function prepareOrder(run) {
+  const boss = bossOf(run);
+  let patches = BASE_PATCHES + toolSum(run, 'patches');
+  let discards = BASE_DISCARDS + toolSum(run, 'discards');
+  if (boss === 'short') patches -= 4;
+  if (boss === 'busy') discards = 0;
+  run.order = {
+    kind: run.orderIdx,
+    target: targetFor(run.day, run.orderIdx),
+    boss,
+    score: 0,
+    patchesLeft: patches,
+    patchesMax: patches,
+    discardsLeft: discards,
+    streak: 0,
+    sinceClear: 0,
+    clears: 0,
+    stuck: false,
+    best: 0,
+  };
+  run.board = emptyBoard();
+  if (boss === 'knots') {
+    let n = 0;
+    while (n < 6) {
+      const k = int(run.rng, N * N);
+      if (run.board[k] === null) { run.board[k] = 'knot'; n++; }
+    }
+  }
+  run.tray = [null, null, null];
+  run.phase = 'intro';
+}
+
+export function beginOrder(run) {
+  if (run.phase !== 'intro') return [];
+  run.phase = 'play';
+  refillTray(run);
+  return [{ type: 'tray' }, ...checkStuck(run)];
+}
+
+function shapePool(run) {
+  if (run.order && run.order.boss === 'big') return SHAPES.filter((s) => s.size >= 4);
+  return SHAPES;
+}
+
+function randomPiece(run) {
+  const shape = weighted(run.rng, shapePool(run), (s) => s.weight);
+  return { shape: shape.id, color: pick(run.rng, COLORS) };
+}
+
+function refillTray(run) {
+  const count = Math.min(3, run.order.patchesLeft);
+  let tray;
+  // Guarantee at least one placeable patch; jams should come from play, not from the dealer.
+  for (let attempt = 0; attempt < 30; attempt++) {
+    tray = [];
+    for (let i = 0; i < count; i++) tray.push(randomPiece(run));
+    if (tray.some((p) => fitsAnywhere(run.board, SHAPE_BY_ID[p.shape]))) break;
+    if (attempt === 29) {
+      // Last resort: a single dot if there is any empty cell.
+      if (run.board.some((v) => v === null)) tray[0] = { shape: 'dot_0', color: pick(run.rng, COLORS) };
+    }
+  }
+  while (tray.length < 3) tray.push(null);
+  run.tray = tray;
+}
+
+export function trayFits(run) {
+  return run.tray.map((p) => !!p && fitsAnywhere(run.board, SHAPE_BY_ID[p.shape]));
+}
+
+function checkStuck(run) {
+  if (run.phase !== 'play') return [];
+  const any = trayFits(run).some(Boolean);
+  run.order.stuck = !any;
+  if (any) return [];
+  if (run.order.discardsLeft > 0) return [{ type: 'stuck' }];
+  return failOrder(run, 'jam');
+}
+
+function failOrder(run, reason) {
+  run.phase = 'over';
+  run.overReason = reason;
+  return [{ type: 'fail', reason, short: run.order.target - run.order.score }];
+}
+
+/** Score preview for UI: what would placing tray[i] at (r,c) produce? null if illegal. */
+export function preview(run, i, r, c) {
+  const p = run.tray[i];
+  if (!p) return null;
+  const shape = SHAPE_BY_ID[p.shape];
+  if (!canPlace(run.board, shape, r, c)) return null;
+  const painted = paint(run.board, shape, r, c, p.color);
+  const lines = fullLines(painted);
+  const res = scorePlacement(run, painted, lines, shape, true);
+  return { lines, ...res.result };
+}
+
+function scorePlacement(run, painted, lines, shape, dry) {
+  const { board: after, cleared } = clearLines(painted, lines);
+  const o = run.order;
+  const streak = lines.length ? o.streak + 1 : 0;
+  const ctx = {
+    lineCount: lines.length,
+    rowLines: lines.filter((l) => l.type === 'row').length,
+    colLines: lines.filter((l) => l.type === 'col').length,
+    monoLines: lines.filter((l) => l.mono).length,
+    cleared,
+    placedCells: shape.size,
+    streak,
+    clearIndex: o.clears + (lines.length ? 1 : 0),
+    perfect: lines.length > 0 && filledCount(after) === 0,
+    emptyAfter: N * N - filledCount(after),
+    coins: run.coins,
+    discardsLeft: o.discardsLeft,
+    boss: o.boss,
+  };
+  // Tool state must not leak from previews: use copies when dry.
+  let tools = run.tools;
+  if (dry) {
+    tools = run.tools.map((t) => ({ id: t.id, data: { ...t.data } }));
+    for (const t of tools) if (TOOLS[t.id].onPlace) TOOLS[t.id].onPlace(t);
+  }
+  return { ctx, after, cleared, result: evaluate(ctx, tools) };
+}
+
+export function place(run, i, r, c) {
+  if (run.phase !== 'play') return { ok: false, events: [] };
+  const p = run.tray[i];
+  if (!p) return { ok: false, events: [] };
+  const shape = SHAPE_BY_ID[p.shape];
+  if (!canPlace(run.board, shape, r, c)) return { ok: false, events: [] };
+
+  const o = run.order;
+  const events = [];
+  // onPlace hooks (e.g. silk) fire before scoring so the patch you place counts.
+  run.tools.forEach((t, slot) => {
+    const def = TOOLS[t.id];
+    if (def.onPlace) { def.onPlace(t); events.push({ type: 'toolGrow', slot }); }
+  });
+
+  const painted = paint(run.board, shape, r, c, p.color);
+  const lines = fullLines(painted);
+  const { ctx, after, cleared, result } = scorePlacement(run, painted, lines, shape, false);
+
+  run.tray[i] = null;
+  o.patchesLeft -= 1;
+  run.stats.placed += 1;
+  events.unshift({ type: 'place', tray: i, r, c, piece: p, cells: shape.cells.map(([dr, dc]) => [r + dr, c + dc]) });
+
+  if (lines.length) {
+    o.clears += 1;
+    o.streak = ctx.streak;
+    o.sinceClear = 0;
+    run.stats.clears += lines.length;
+    run.stats.bestStreak = Math.max(run.stats.bestStreak, o.streak);
+    if (ctx.perfect) run.stats.perfects += 1;
+    run.tools.forEach((t, slot) => {
+      const def = TOOLS[t.id];
+      if (def.after && def.after(ctx, t)) events.push({ type: 'toolGrow', slot, late: true });
+    });
+  } else {
+    o.sinceClear += 1;
+    if (o.sinceClear >= 3) o.streak = 0;
+  }
+
+  run.board = after;
+  o.score += result.score;
+  o.best = Math.max(o.best, result.score);
+  run.stats.bestHand = Math.max(run.stats.bestHand, result.score);
+  events.push({
+    type: 'score', lines, cleared, result, streak: o.streak, perfect: ctx.perfect,
+    painted, mono: ctx.monoLines,
+  });
+
+  if (o.score >= o.target) {
+    events.push(...winOrder(run));
+    return { ok: true, events };
+  }
+  if (o.patchesLeft <= 0) {
+    events.push(...failOrder(run, 'out'));
+    return { ok: true, events };
+  }
+  if (run.tray.every((t) => t === null)) {
+    refillTray(run);
+    events.push({ type: 'tray' });
+  }
+  events.push(...checkStuck(run));
+  return { ok: true, events };
+}
+
+export function discard(run) {
+  if (run.phase !== 'play' || run.order.discardsLeft <= 0) return [];
+  run.order.discardsLeft -= 1;
+  refillTray(run);
+  return [{ type: 'discard' }, { type: 'tray' }, ...checkStuck(run)];
+}
+
+function winOrder(run) {
+  const o = run.order;
+  run.phase = 'reward';
+  run.stats.orders += 1;
+  const lines = [];
+  lines.push({ label: ORDER_KINDS[o.kind].name + ' 완료', coins: ORDER_KINDS[o.kind].reward });
+  const left = Math.min(5, o.patchesLeft);
+  if (left > 0) lines.push({ label: `남은 조각 ${o.patchesLeft}개`, coins: left });
+  const interest = Math.min(5, Math.floor(run.coins / 5));
+  if (interest > 0) lines.push({ label: '이자 (5닢마다 1)', coins: interest });
+  run.tools.forEach((t) => {
+    const def = TOOLS[t.id];
+    if (def.reward) lines.push({ label: def.name, coins: def.reward(run, t) });
+  });
+  run.reward = { lines, total: lines.reduce((s, l) => s + l.coins, 0) };
+  return [{ type: 'won' }];
+}
+
+export function collectReward(run) {
+  if (run.phase !== 'reward') return [];
+  run.coins += run.reward.total;
+  const got = run.reward.total;
+  run.reward = null;
+  const finishedRun = run.day === DAYS && run.orderIdx === ORDERS_PER_DAY - 1 && !run.endless;
+  if (finishedRun) {
+    run.phase = 'victory';
+    return [{ type: 'coins', amount: got }, { type: 'victory' }];
+  }
+  openShop(run);
+  return [{ type: 'coins', amount: got }];
+}
+
+function rarityWeight(run, rarity) {
+  const d = Math.min(run.day, 6);
+  return rarity === 1 ? 60 : rarity === 2 ? 28 + d * 2 : 8 + d * 3;
+}
+
+function rollOffers(run) {
+  const owned = new Set(run.tools.map((t) => t.id));
+  let pool = TOOL_IDS.filter((id) => !owned.has(id));
+  const offers = [];
+  for (let k = 0; k < 3 && pool.length; k++) {
+    const id = weighted(run.rng, pool, (x) => rarityWeight(run, TOOLS[x].rarity));
+    offers.push({ id, sold: false });
+    pool = pool.filter((x) => x !== id);
+  }
+  return offers;
+}
+
+function openShop(run) {
+  run.phase = 'shop';
+  run.shop = { offers: rollOffers(run), rerollCost: REROLL_BASE };
+}
+
+export function buy(run, i) {
+  if (run.phase !== 'shop') return { ok: false, reason: 'phase' };
+  const offer = run.shop.offers[i];
+  if (!offer || offer.sold) return { ok: false, reason: 'sold' };
+  const price = TOOLS[offer.id].price;
+  if (run.tools.length >= MAX_TOOLS) return { ok: false, reason: 'full' };
+  if (run.coins < price) return { ok: false, reason: 'coins' };
+  run.coins -= price;
+  offer.sold = true;
+  run.tools.push(makeTool(offer.id));
+  return { ok: true };
+}
+
+export function sell(run, slot) {
+  if (run.phase !== 'shop') return { ok: false };
+  const t = run.tools[slot];
+  if (!t) return { ok: false };
+  run.coins += sellPrice(t);
+  run.tools.splice(slot, 1);
+  return { ok: true };
+}
+
+export function reroll(run) {
+  if (run.phase !== 'shop' || run.coins < run.shop.rerollCost) return { ok: false };
+  run.coins -= run.shop.rerollCost;
+  run.shop.rerollCost += 1;
+  run.shop.offers = rollOffers(run);
+  return { ok: true };
+}
+
+export function leaveShop(run) {
+  if (run.phase !== 'shop') return [];
+  run.shop = null;
+  run.orderIdx += 1;
+  if (run.orderIdx >= ORDERS_PER_DAY) {
+    run.orderIdx = 0;
+    run.day += 1;
+  }
+  prepareOrder(run);
+  return [{ type: 'nextOrder', day: run.day, orderIdx: run.orderIdx }];
+}
+
+export function continueEndless(run) {
+  if (run.phase !== 'victory') return [];
+  run.endless = true;
+  openShop(run);
+  return [];
+}
+
+export function isValidSave(s) {
+  return !!s && s.v === SAVE_VERSION && s.rng && typeof s.rng.s === 'number' && Array.isArray(s.board) &&
+    s.board.length === N * N && Array.isArray(s.tools) && typeof s.phase === 'string' &&
+    s.tools.every((t) => TOOLS[t.id]);
+}
+
+export { idx, N };
