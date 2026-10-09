@@ -143,7 +143,8 @@ function renderHud() {
   if (o.boss) {
     const b = R.BOSSES[o.boss];
     el.boss.hidden = false;
-    el.boss.innerHTML = `<span class="seal">${b.name[0]}</span><b>${b.name}</b><span>${b.desc}</span>`;
+    el.boss.innerHTML = `<span class="seal">${b.name[0]}</span><b>${b.name}</b><span class="desc">${b.desc}</span>`;
+    el.boss.onclick = () => toast(`${b.name}: ${b.desc}`, 2200);
   } else el.boss.hidden = true;
   setStreak(o.streak);
   renderTools(el.tools, run.tools, { onTap: (i, b) => showToolTip(run.tools[i], b) });
@@ -329,7 +330,7 @@ function startRun(mode) {
 function continueRun() {
   const save = store.loadRun();
   if (!R.isValidSave(save)) { store.clearRun(); titleScreen(); return; }
-  run = save;
+  run = R.migrate(save);
   enterGame();
   resumePhase();
 }
@@ -441,7 +442,11 @@ function begin() {
   if (!meta.tutorial && run.day === 1 && run.orderIdx === 0) { hintStage = 1; hint('조각을 끌어 수틀에 놓으세요'); }
   else if (pendingHint) { hint(pendingHint, 3200); pendingHint = null; }
   if (ev.some((e) => e.type === 'stuck')) stuckHint();
-  if (ev.some((e) => e.type === 'fail')) playEvents(ev.filter((e) => e.type === 'fail'));
+  if (ev.some((e) => e.type === 'fail')) {
+    recordRun(false);
+    persist();
+    playEvents(ev.filter((e) => e.type === 'fail'));
+  }
 }
 
 function stuckHint() {
@@ -478,7 +483,7 @@ function showPreview(h) {
   const pv = R.preview(run, h.i, h.r, h.c);
   if (!pv) return;
   const o = run.order;
-  el.ghost.style.width = Math.min(100, ((o.score + pv.score) / o.target) * 100) + '%';
+  el.ghost.style.width = Math.min(100, ((o.score - pendingScore + pv.score) / o.target) * 100) + '%';
   el.ghost.classList.toggle('win', pv.completes);
   if (pv.lines.length) {
     setStreak(pv.streak, 'up');
@@ -653,6 +658,7 @@ function startTally(ev) {
     mEl.textContent = fmtMult(result.mult);
     if (!job.flushed) await sleep(120 * sp);
 
+    if (!run || !run.order) { if (tallyJob === job) tallyJob = null; return; } // left the game mid-tally
     // slam
     const power = Math.log10(Math.max(10, result.score)) - 1;
     const size = Math.min(64, 30 + power * 10);
@@ -932,7 +938,7 @@ function showPause() {
   const s = openModal(html, { center: true });
   bindSwitches(s);
   on(s, '#resume', () => resumePhase());
-  on(s, '#how', () => showHow(() => showPause()));
+  on(s, '#how', () => showHow(() => { closeModal(); showPause(); }));
   on(s, '#quit', () => { persist(); titleScreen(); });
 }
 
@@ -1012,11 +1018,22 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && run && run.phase === 'play' && el.modal.hidden) showPause();
 });
 
-// hot-update hook for the artifact viewer: keep the run when code is republished
-try { if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(() => ({ run })); } catch { /* optional */ }
-
 if (document.fonts) document.fonts.ready.then(() => view.resize());
-titleScreen();
+
+// Artifact viewer hot updates: carry the live run across a republish and drop the player back in.
+function boot(data) {
+  const carried = data && data.run;
+  if (carried && R.isValidSave(carried)) {
+    store.saveRun(R.migrate(carried));
+    continueRun();
+    return;
+  }
+  titleScreen();
+}
+const hot = window.claude && window.claude.hot;
+try { if (hot && hot.snapshot) hot.snapshot(() => ({ run: run && run.phase !== 'over' ? run : null })); } catch { /* optional */ }
+if (hot && hot.ready) hot.ready(boot);
+else boot(hot && hot.data ? hot.data : {});
 
 // handle for automated tests
 window.__bojagi = { get run() { return run; }, view, R, shapes: SHAPE_BY_ID };

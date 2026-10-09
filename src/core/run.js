@@ -256,6 +256,7 @@ export function place(run, i, r, c) {
   if (!canPlace(run.board, shape, r, c)) return { ok: false, events: [] };
 
   const o = run.order;
+  o.colors ||= {};
   const events = [];
   const lateGrow = [];
   // onPlace hooks (e.g. silk) fire before scoring so the patch you place counts.
@@ -430,6 +431,14 @@ export function continueEndless(run) {
   run.endless = true;
   openShop(run);
   return [];
+}
+
+/** Fills fields added after a save was written so older saves keep working. */
+export function migrate(s) {
+  s.history ||= [];
+  if (s.order) s.order.colors ||= {};
+  s.stats = { bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0, ...(s.stats || {}) };
+  return s;
 }
 
 export function isValidSave(s) {

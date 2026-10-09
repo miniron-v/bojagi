@@ -235,3 +235,18 @@ test('run: half the trays share a color (mono seams are reachable)', () => {
   }
   assert.ok(mono / total > 0.4 && mono / total < 0.7, `mono ratio ${mono / total}`);
 });
+
+test('run: saves from before order.colors/history still play after migrate', () => {
+  const run = R.newRun({ seed: 21 });
+  R.beginOrder(run);
+  delete run.order.colors;
+  delete run.history;
+  const old = JSON.parse(JSON.stringify(run));
+  assert.ok(R.isValidSave(old));
+  R.migrate(old);
+  let placed = false;
+  for (let i = 0; i < 3 && !placed; i++) for (let r = 0; r < 8 && !placed; r++) for (let c = 0; c < 8 && !placed; c++) {
+    if (R.preview(old, i, r, c)) { assert.ok(R.place(old, i, r, c).ok); placed = true; }
+  }
+  assert.ok(placed);
+});
