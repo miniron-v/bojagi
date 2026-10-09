@@ -1,0 +1,58 @@
+<title>보자기 공방</title>
+<meta name="theme-color" content="#121829">
+<meta name="description" content="조각을 이어 줄을 꿰매고, 바느질 도구로 점수 엔진을 만드는 퍼즐 로그라이트">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Song+Myung&display=swap">
+<style>/*__CSS__*/</style>
+<div id="app">
+  <section id="title" class="screen" aria-label="시작 화면">
+    <div>
+      <h1 class="logo">보자기 공방<small>BOJAGI WORKSHOP</small></h1>
+    </div>
+    <canvas id="title-art" aria-hidden="true"></canvas>
+    <div class="title-menu">
+      <p class="best-line" id="best-line"></p>
+      <button class="btn btn-gold" id="btn-continue" hidden><span>이어 짓기</span><span class="sub"></span></button>
+      <button class="btn btn-seal" id="btn-new">새로 짓기</button>
+      <button class="btn" id="btn-daily"><span>오늘의 의뢰</span><span class="sub"></span></button>
+      <div class="title-foot">
+        <button class="btn btn-ghost btn-small" id="btn-codex">도감 <span id="codex-count"></span></button>
+        <button class="btn btn-ghost btn-small" id="btn-records">기록</button>
+        <button class="btn btn-ghost btn-small" id="btn-how">방법</button>
+        <button class="btn btn-ghost btn-small" id="btn-sound">소리 켬</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="game" class="screen" hidden aria-label="게임">
+    <header class="hud-top">
+      <div><span class="day-label">장날 <b id="hud-day">1</b><span id="hud-daymax">/4</span></span><span id="hud-kind" class="kind">작은 주문</span></div>
+      <button class="icon-btn" id="btn-pause" aria-label="잠시 쉬기"></button>
+    </header>
+    <section class="order" aria-label="주문 진행">
+      <div class="score-row"><span class="score" id="hud-score" aria-live="polite">0</span><span class="target">목표 <b id="hud-target">0</b></span></div>
+      <div class="bar" id="hud-bar"><div class="ghost" id="hud-ghost"></div><div class="fill" id="hud-fill"></div></div>
+      <div class="stats">
+        <div class="stat" id="stat-patches"><span id="ic-patch"></span><b id="hud-patches">0</b>조각</div>
+        <div class="stat"><b id="hud-discards">0</b>버리기</div>
+        <div class="stat coins"><span id="ic-coin"></span><b id="hud-coins">0</b></div>
+        <div class="stat boss" id="hud-boss" hidden></div>
+      </div>
+    </section>
+    <div class="tools" id="hud-tools" aria-label="바느질 도구"></div>
+    <div class="stage" id="stage">
+      <canvas id="cv" aria-label="수틀과 조각"></canvas>
+      <div class="tally" id="tally" aria-hidden="true"></div>
+      <div class="hint" id="hint" role="status"></div>
+    </div>
+    <footer class="hud-bottom">
+      <button class="btn btn-discard" id="btn-discard">버리기 <b>2</b></button>
+    </footer>
+  </section>
+
+  <canvas id="fx" aria-hidden="true"></canvas>
+  <div id="modal" class="modal" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+  <div id="toast" role="status"></div>
+</div>
+<script>/*__JS__*/</script>
