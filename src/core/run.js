@@ -23,7 +23,7 @@ export const ORDER_KINDS = [
 // Target for the small order of each day; big/boss multiply by ORDER_KINDS.scale.
 // Calibrated by tools/simulate.mjs.
 export const DAY_BASE = [300, 800, 1800, 4500];
-export const ENDLESS_GROWTH = 1.7;
+export const ENDLESS_GROWTH = 2.2;
 
 export const BOSSES = {
   knots: { name: '매듭', desc: '수틀에 매듭 6개가 박힌 채 시작' },
