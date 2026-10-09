@@ -4,6 +4,7 @@ import * as R from '../src/core/run.js';
 import { SHAPE_BY_ID } from '../src/core/shapes.js';
 import { N, idx, paint, fullLines, clearLines, canPlace } from '../src/core/board.js';
 import { TOOLS, MAX_TOOLS } from '../src/core/tools.js';
+import { lockedIds } from '../src/core/unlocks.js';
 
 const RUNS = +process.argv[2] || 300;
 const BOT = process.argv[3] || 'smart';
@@ -89,7 +90,7 @@ let victories = 0;
 let totalPlaced = 0;
 const t0 = Date.now();
 for (let k = 0; k < RUNS; k++) {
-  const run = R.newRun({ seed: 1000 + k });
+  const run = R.newRun({ seed: 1000 + k, locked: process.env.NEWBIE ? lockedIds({}) : [] });
   while (true) {
     if (run.phase === 'gift') R.chooseGift(run, val(run.gift[0]) >= val(run.gift[1]) ? 0 : 1);
     if (run.phase === 'intro') R.beginOrder(run);

@@ -10,6 +10,7 @@ import { sfx, unlock, setEnabled, resumeAudio } from './audio.js';
 import { createTitleArt } from './title-art.js';
 import { drawQuilt, shareText } from './quilt.js';
 import * as store from './store.js';
+import { lockedIds, isUnlocked, progress } from '../core/unlocks.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app');
@@ -314,10 +315,11 @@ function titleScreen() {
 }
 
 function startRun(mode) {
-  let opts = {};
+  // the daily order is the same for everyone, so it uses the full tool set
+  let opts = { locked: lockedIds(meta) };
   if (mode === 'daily') {
     const { key, seed } = R.dailySeed();
-    opts = { seed, mode: 'daily', dailyKey: key };
+    opts = { seed, mode: 'daily', dailyKey: key, locked: [] };
   }
   run = R.newRun(opts);
   meta.runs += 1;
@@ -367,7 +369,11 @@ function resumePhase() {
 
 function toolCard(id, { action = '', sold = false, locked = false, inst = null } = {}) {
   const def = TOOLS[id];
-  const desc = locked ? '아직 만나지 못한 도구' : inst ? toolDesc(inst) : def.desc({ data: def.init ? def.init() : {} });
+  let desc = inst ? toolDesc(inst) : def.desc({ data: def.init ? def.init() : {} });
+  if (locked) {
+    const p = !isUnlocked(id, meta) && progress(id, meta);
+    desc = p ? `잠김 · ${p.need} (${p.have}/${p.goal})` : '아직 만나지 못한 도구';
+  }
   return `<div class="card r${def.rarity}${sold ? ' sold' : ''}${locked ? ' locked' : ''}">
     <div class="art">${toolArt(def)}</div>
     <div class="min"><div class="name">${locked ? '???' : def.name}<span class="rar">${RARITY_NAME[def.rarity]}</span></div><div class="desc">${desc}</div></div>
@@ -823,6 +829,7 @@ function showShop() {
 // ---------- end of run ----------
 /** Writes records immediately (before any animation) so closing the app can't lose them. */
 function recordRun(victory) {
+  const before = new Set(lockedIds(meta));
   const st = run.stats;
   const reachedDay = run.day;
   endInfo = { newDay: reachedDay > meta.bestDay, newHand: st.bestHand > meta.bestHand };
@@ -830,8 +837,13 @@ function recordRun(victory) {
   meta.bestOrders = Math.max(meta.bestOrders, st.orders);
   meta.bestHand = Math.max(meta.bestHand, st.bestHand);
   meta.bestStreak = Math.max(meta.bestStreak, st.bestStreak);
-  meta.clears += st.clears - (run.reportedClears || 0);
-  run.reportedClears = st.clears;
+  const rep = run.reported || {};
+  for (const k of ['clears', 'monos', 'crosses', 'triples', 'perfects']) {
+    meta[k] = (meta[k] || 0) + (st[k] || 0) - (rep[k] || 0);
+    rep[k] = st[k] || 0;
+  }
+  run.reported = rep;
+  meta.maxCoins = Math.max(meta.maxCoins || 0, st.maxCoins || 0, run.coins);
   if (victory && !run.winRecorded) { meta.wins += 1; run.winRecorded = true; }
   if (run.mode === 'daily' && run.dailyKey) {
     const prev = meta.daily[run.dailyKey];
@@ -846,6 +858,7 @@ function recordRun(victory) {
     }
     meta.dailyStreak = ds;
   }
+  endInfo.unlocked = [...before].filter((id) => isUnlocked(id, meta));
   store.saveMeta(meta);
 }
 
@@ -857,6 +870,9 @@ function showEnd(victory, ev) {
     <div><small>완료한 주문</small><b>${st.orders}</b></div>
     <div><small>최고 한 땀</small><b>${fmt(st.bestHand)}</b>${endInfo.newHand ? '<span class="new">신기록</span>' : ''}</div>
     <div><small>최고 연속</small><b>${st.bestStreak}</b></div></div>`;
+  const unlockedNote = endInfo.unlocked && endInfo.unlocked.length
+    ? `<div class="unlock-note">${endInfo.unlocked.map((id) => `<span class="art">${toolArt(TOOLS[id])}</span>`).join('')}<div><b>새 도구가 장터에 나와요</b><span>${endInfo.unlocked.map((id) => TOOLS[id].name).join(', ')}</span></div></div>`
+    : '';
   const quilt = `<figure class="quilt"><canvas id="quilt" aria-label="이번 판의 조각보"></canvas><figcaption>이번 판의 조각보</figcaption></figure>`;
   const share = run.mode === 'daily' ? '<button class="btn btn-ghost" id="share">결과 복사하기</button>' : '';
   let html;
@@ -865,7 +881,7 @@ function showEnd(victory, ev) {
     sfx.perfect();
     html = `<div class="eyebrow">${R.DAYS}일의 장이 끝났어요</div><h2>보자기 완성</h2>
       <p class="lead">손님들이 모두 만족했어요. 밤을 새워 더 큰 주문에 도전할 수도 있어요.</p>
-      <div class="end-body">${quilt}${grid}</div>
+      <div class="end-body">${quilt}${grid}</div>${unlockedNote}
       <div class="actions"><button class="btn btn-gold" id="endless" data-autofocus>밤샘 작업 이어가기</button>${share}
       <button class="btn btn-ghost" id="home">처음으로</button></div>`;
   } else {
@@ -873,7 +889,7 @@ function showEnd(victory, ev) {
     const near = short <= run.order.target * 0.1;
     html = `<div class="eyebrow">${dayLabel()} · ${kindName(run.order.kind)}</div><h2>${near ? '아깝다!' : '주문 실패'}</h2>
       <p class="shortfall">목표까지 <b>${fmt(short)}</b>점 모자랐어요</p>
-      <div class="end-body">${quilt}${grid}</div>
+      <div class="end-body">${quilt}${grid}</div>${unlockedNote}
       <div class="actions"><button class="btn btn-seal" id="again" data-autofocus>${run.mode === 'daily' ? '오늘의 의뢰 다시' : '다시 짓기'}</button>${share}
       <button class="btn btn-ghost" id="home">처음으로</button></div>`;
   }
@@ -957,8 +973,10 @@ function showHow(back) {
 }
 
 function showCodex() {
+  const lockedN = lockedIds(meta).length;
   const html = `<div class="eyebrow">도구 도감 ${meta.discovered.length}/${TOOL_IDS.length}</div><h2>바느질 도구</h2>
-    <div class="cards">${TOOL_IDS.map((id) => toolCard(id, { locked: !meta.discovered.includes(id) })).join('')}</div>
+    ${lockedN ? `<p class="lead">잠긴 도구 ${lockedN}개는 조건을 채우면 장터에 나와요.</p>` : ''}
+    <div class="cards">${TOOL_IDS.map((id) => toolCard(id, { locked: !meta.discovered.includes(id) || !isUnlocked(id, meta) })).join('')}</div>
     <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>닫기</button></div>`;
   const s = openModal(html);
   on(s, '#back', closeModal);

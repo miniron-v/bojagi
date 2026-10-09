@@ -18,6 +18,7 @@ function write(k, v) {
 
 export const defaultMeta = () => ({
   runs: 0, wins: 0, bestDay: 0, bestOrders: 0, bestHand: 0, bestStreak: 0, clears: 0,
+  monos: 0, crosses: 0, triples: 0, perfects: 0, maxCoins: 0,
   discovered: [], tutorial: false, daily: {},
 });
 

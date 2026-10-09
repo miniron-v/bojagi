@@ -266,6 +266,11 @@ b, .num { font-variant-numeric: tabular-nums; }
 .quilt { margin: 0; }
 .quilt canvas { width: 100%; display: block; border-radius: 8px; background: #0f1527b3; }
 .quilt figcaption { font-size: 11px; color: var(--muted); text-align: center; margin-top: 4px; }
+.unlock-note { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #e7b33a1f; box-shadow: inset 0 0 0 1px #e7b33a66; }
+.unlock-note .art { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 10px; background: #0f1527b3; }
+.unlock-note .art svg { width: 32px; height: 32px; }
+.unlock-note b { display: block; color: var(--gold); font-size: 14px; }
+.unlock-note span { font-size: 13px; color: var(--thread); }
 .daily-list { display: grid; gap: 4px; margin-top: 6px; }
 .daily-list div { display: flex; justify-content: space-between; padding: 7px 12px; border-radius: 10px; background: #ffffff0b; font-size: 14px; }
 .daily-list b { color: var(--gold); }

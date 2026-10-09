@@ -250,3 +250,22 @@ test('run: saves from before order.colors/history still play after migrate', () 
   }
   assert.ok(placed);
 });
+
+test('unlocks: locked tools never appear in gifts or the shop', async () => {
+  const { lockedIds, isUnlocked } = await import('../src/core/unlocks.js');
+  const locked = lockedIds({});
+  assert.ok(locked.includes('artisan') && locked.includes('hoop'));
+  assert.ok(isUnlocked('artisan', { monos: 10 }));
+  for (let seed = 1; seed <= 40; seed++) {
+    const run = R.newRun({ seed, locked });
+    assert.ok(run.gift.every((id) => !locked.includes(id)));
+    run.phase = 'reward';
+    run.reward = { lines: [], total: 50 };
+    R.collectReward(run);
+    R.chooseGift(run, 0);
+    for (let k = 0; k < 5; k++) {
+      assert.ok(run.shop.offers.every((o) => !locked.includes(o.id)));
+      R.reroll(run);
+    }
+  }
+});

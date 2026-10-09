@@ -51,7 +51,7 @@ export function dailySeed(date = new Date()) {
   return { key, seed: hashString(`bojagi:${key}`) };
 }
 
-export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal', dailyKey = null } = {}) {
+export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal', dailyKey = null, locked = [] } = {}) {
   const rng = createRng(seed);
   const bosses = [];
   let pool = shuffle(rng, BOSS_IDS);
@@ -68,7 +68,8 @@ export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal'
     coins: START_COINS,
     tools: [],
     bosses,
-    gift: shuffle(rng, TOOL_IDS.filter((id) => TOOLS[id].rarity === 1)).slice(0, 2),
+    locked: locked.slice(),
+    gift: shuffle(rng, TOOL_IDS.filter((id) => TOOLS[id].rarity === 1 && !locked.includes(id))).slice(0, 2),
     board: emptyBoard(),
     tray: [null, null, null],
     order: null,
@@ -76,13 +77,17 @@ export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal'
     reward: null,
     history: [],
     endless: false,
-    stats: { bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0 },
+    stats: { ...emptyStats() },
   };
   prepareOrder(run);
   return run;
 }
 
 /** The first customer's gift is offered after the first order, once the player knows the rules. */
+export function emptyStats() {
+  return { bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0, monos: 0, crosses: 0, triples: 0, maxCoins: 0 };
+}
+
 export function chooseGift(run, i) {
   if (run.phase !== 'gift') return [];
   const id = run.gift[i];
@@ -283,6 +288,9 @@ export function place(run, i, r, c) {
     run.stats.clears += lines.length;
     run.stats.bestStreak = Math.max(run.stats.bestStreak, o.streak);
     if (ctx.perfect) run.stats.perfects += 1;
+    run.stats.monos += ctx.monoLines;
+    if (ctx.rowLines && ctx.colLines) run.stats.crosses += 1;
+    if (lines.length >= 3) run.stats.triples += 1;
     run.tools.forEach((t, slot) => {
       const def = TOOLS[t.id];
       if (def.after && def.after(ctx, t)) lateGrow.push({ type: 'toolGrow', slot, late: true });
@@ -347,6 +355,7 @@ function winOrder(run) {
 export function collectReward(run) {
   if (run.phase !== 'reward') return [];
   run.coins += run.reward.total;
+  run.stats.maxCoins = Math.max(run.stats.maxCoins || 0, run.coins);
   const got = run.reward.total;
   run.reward = null;
   const finishedRun = run.day === DAYS && run.orderIdx === ORDERS_PER_DAY - 1 && !run.endless;
@@ -369,7 +378,8 @@ function rarityWeight(run, rarity) {
 
 function rollOffers(run) {
   const owned = new Set(run.tools.map((t) => t.id));
-  let pool = TOOL_IDS.filter((id) => !owned.has(id));
+  const locked = new Set(run.locked || []);
+  let pool = TOOL_IDS.filter((id) => !owned.has(id) && !locked.has(id));
   const offers = [];
   for (let k = 0; k < 3 && pool.length; k++) {
     const id = weighted(run.rng, pool, (x) => rarityWeight(run, TOOLS[x].rarity));
@@ -437,7 +447,8 @@ export function continueEndless(run) {
 export function migrate(s) {
   s.history ||= [];
   if (s.order) s.order.colors ||= {};
-  s.stats = { bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0, ...(s.stats || {}) };
+  s.stats = { ...emptyStats(), ...(s.stats || {}) };
+  s.locked ||= [];
   return s;
 }
 
