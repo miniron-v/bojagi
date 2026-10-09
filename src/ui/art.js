@@ -64,6 +64,13 @@ export function paintPatch(g, color, w, h) {
     g.beginPath(); g.moveTo(i + span, 0); g.lineTo(i, span); g.stroke();
   }
   g.restore();
+  // dark cloth needs a light rim to read on the indigo ground
+  if (color === 'black' || color === 'knot') {
+    rr(g, inset + 0.5, inset + 0.5, w - inset * 2 - 1, h - inset * 2 - 1, r);
+    g.strokeStyle = 'rgba(244,234,211,.32)';
+    g.lineWidth = Math.max(1, px * 0.03);
+    g.stroke();
+  }
   // top highlight
   g.globalAlpha = 0.25;
   rr(g, inset + px * 0.08, inset + px * 0.06, w - inset * 2 - px * 0.16, px * 0.14, px * 0.07);
