@@ -68,8 +68,8 @@ test('scoring: phases apply chips, then +mult, then ×mult regardless of slot or
   const a = evaluate(baseCtx({ lineCount: 2, colLines: 1 }), [makeTool('scissors'), makeTool('thimble'), makeTool('needlecase')]);
   const b = evaluate(baseCtx({ lineCount: 2, colLines: 1 }), [makeTool('needlecase'), makeTool('thimble'), makeTool('scissors')]);
   assert.equal(a.score, b.score);
-  // chips 40 + 20 + 50 = 110; mult 2 + 4 = 6; ×1.5 = 9 → 990
-  assert.equal(a.score, 990);
+  // chips 40 + 20 + 50 = 110; mult 2² + 3 = 7; ×2 = 14 → 1540
+  assert.equal(a.score, 1540);
 });
 
 test('scoring: ink boss zeroes black cells, strict halves mult', () => {
@@ -107,7 +107,6 @@ function playGreedy(run, maxSteps = 400) {
 test('run: deterministic from seed and preview equals actual score', () => {
   const a = R.newRun({ seed: 42 });
   const b = R.newRun({ seed: 42 });
-  R.chooseGift(a, 0); R.chooseGift(b, 0);
   R.beginOrder(a); R.beginOrder(b);
   assert.deepEqual(a.tray, b.tray);
   // preview must match actual placement result
@@ -128,7 +127,7 @@ test('run: full loop reaches reward or over, survives JSON round-trip', () => {
   let won = 0;
   for (let seed = 1; seed <= 30; seed++) {
     let run = R.newRun({ seed });
-    R.chooseGift(run, 1);
+    assert.equal(run.phase, 'intro');
     R.beginOrder(run);
     run = JSON.parse(JSON.stringify(run));
     assert.ok(R.isValidSave(run));
@@ -138,8 +137,11 @@ test('run: full loop reaches reward or over, survives JSON round-trip', () => {
       won++;
       const coins = run.coins;
       R.collectReward(run);
-      assert.equal(run.phase, 'shop');
+      assert.equal(run.phase, 'gift', 'first order is followed by the gift pick');
       assert.ok(run.coins > coins);
+      R.chooseGift(run, 1);
+      assert.equal(run.tools.length, 1);
+      assert.equal(run.phase, 'shop');
       assert.equal(run.shop.offers.length, 3);
       R.leaveShop(run);
       assert.equal(run.phase, 'intro');
@@ -151,10 +153,10 @@ test('run: full loop reaches reward or over, survives JSON round-trip', () => {
 
 test('run: shop buy / sell / reroll economics', () => {
   const run = R.newRun({ seed: 7 });
-  R.chooseGift(run, 0);
   run.phase = 'reward';
   run.reward = { lines: [], total: 20 };
   R.collectReward(run);
+  R.chooseGift(run, 0);
   const c0 = run.coins;
   const price = TOOLS[run.shop.offers[0].id].price;
   assert.ok(R.buy(run, 0).ok);
@@ -162,8 +164,8 @@ test('run: shop buy / sell / reroll economics', () => {
   assert.ok(!R.buy(run, 0).ok);
   const c1 = run.coins;
   assert.ok(R.reroll(run).ok);
-  assert.equal(run.coins, c1 - 3);
-  assert.equal(run.shop.rerollCost, 4);
+  assert.equal(run.coins, c1 - R.REROLL_BASE);
+  assert.equal(run.shop.rerollCost, R.REROLL_BASE + 1);
   const n = run.tools.length;
   assert.ok(R.sell(run, 0).ok);
   assert.equal(run.tools.length, n - 1);
@@ -171,11 +173,10 @@ test('run: shop buy / sell / reroll economics', () => {
 
 test('run: boss rules shape the order', () => {
   const run = R.newRun({ seed: 3 });
-  R.chooseGift(run, 0);
   run.orderIdx = 2;
   run.bosses[0] = 'knots';
   R.prepareOrder(run);
-  assert.equal(run.board.filter((v) => v === 'knot').length, 6);
+  assert.equal(run.board.filter((v) => v === 'knot').length, 8);
   run.bosses[0] = 'busy';
   R.prepareOrder(run);
   assert.equal(run.order.discardsLeft, 0);
@@ -195,4 +196,42 @@ test('run: targets grow monotonically', () => {
     assert.ok(t > prev, `${d}/${o}: ${t} <= ${prev}`);
     prev = t;
   }
+});
+
+test('scoring: multi-line clears grow quadratically', () => {
+  const two = evaluate(baseCtx({ lineCount: 2, cleared: Array.from({ length: 16 }, (_, k) => ({ r: k >> 3, c: k & 7, color: 'red' })) }), []);
+  assert.equal(two.score, (80 + 20) * 4);
+});
+
+test('tools: silk resets each order, iron grows per clear', () => {
+  const run = R.newRun({ seed: 11 });
+  run.tools.push(makeTool('silk'), makeTool('iron'));
+  run.tools[0].data.chips = 99;
+  R.prepareOrder(run);
+  assert.equal(run.tools[0].data.chips, 0);
+});
+
+test('run: invalid saves are rejected per phase', () => {
+  const run = R.newRun({ seed: 5 });
+  assert.ok(R.isValidSave(JSON.parse(JSON.stringify(run))));
+  const bad = JSON.parse(JSON.stringify(run));
+  bad.phase = 'reward';
+  bad.reward = null;
+  assert.ok(!R.isValidSave(bad));
+  const bad2 = JSON.parse(JSON.stringify(run));
+  bad2.tools = [{ id: 'nope', data: {} }];
+  assert.ok(!R.isValidSave(bad2));
+  assert.ok(!R.isValidSave(null));
+});
+
+test('run: half the trays share a color (mono seams are reachable)', () => {
+  let mono = 0, total = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    const run = R.newRun({ seed });
+    R.beginOrder(run);
+    const t = run.tray.filter(Boolean);
+    total++;
+    if (t.every((p) => p.color === t[0].color)) mono++;
+  }
+  assert.ok(mono / total > 0.4 && mono / total < 0.7, `mono ratio ${mono / total}`);
 });

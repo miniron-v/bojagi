@@ -7,6 +7,12 @@ import { TOOLS, MAX_TOOLS } from '../src/core/tools.js';
 
 const RUNS = +process.argv[2] || 300;
 const BOT = process.argv[3] || 'smart';
+const SHOP = process.argv[4] || 'value'; // value | rarity
+if (process.argv[5]) process.argv[5].split(',').forEach((v, i) => { R.DAY_BASE[i] = +v; });
+// rough hand-tuned tool values for the "planner" shopper
+const VAL = { lantern: 8, thimble: 8, coins: 7, silk: 8, iron: 9, norigae: 8, spool: 8, grandma: 8, tape: 7, needlecase: 6,
+  lamp: 6, scissors: 7, hoop: 7, artisan: 7, ruler: 6, obang: 6, pincushion: 5, sewingbox: 4, pouch: 3 };
+const val = (id) => (SHOP === 'value' ? (VAL[id] || 4) : TOOLS[id].rarity);
 
 function boardQuality(board) {
   // Rewards open space and penalizes isolated single holes and ragged lines.
@@ -59,19 +65,20 @@ function chooseMove(run) {
 }
 
 function shopBot(run) {
-  // Buy the priciest affordable tool, keep 5 slots, then save for interest.
-  for (let guard = 0; guard < 6; guard++) {
+  for (let guard = 0; guard < 10; guard++) {
     const offers = run.shop.offers
       .map((o, i) => ({ ...o, i, price: TOOLS[o.id].price }))
       .filter((o) => !o.sold && o.price <= run.coins)
-      .sort((a, b) => TOOLS[b.id].rarity - TOOLS[a.id].rarity || b.price - a.price);
-    if (!offers.length) break;
-    if (run.tools.length >= MAX_TOOLS) {
-      const worst = run.tools.reduce((m, t, s) => (TOOLS[t.id].rarity < TOOLS[run.tools[m].id].rarity ? s : m), 0);
-      if (TOOLS[run.tools[worst].id].rarity >= TOOLS[offers[0].id].rarity) break;
-      R.sell(run, worst);
+      .sort((a, b) => val(b.id) - val(a.id) || b.price - a.price);
+    if (offers.length) {
+      const o = offers[0];
+      if (run.tools.length >= MAX_TOOLS) {
+        const worst = run.tools.reduce((m, t, s) => (val(t.id) < val(run.tools[m].id) ? s : m), 0);
+        if (val(run.tools[worst].id) < val(o.id)) { R.sell(run, worst); R.buy(run, o.i); continue; }
+      } else { R.buy(run, o.i); continue; }
     }
-    R.buy(run, offers[0].i);
+    if (SHOP === 'value' && run.coins >= run.shop.rerollCost + 8 && run.tools.some((t) => val(t.id) < 7)) { R.reroll(run); continue; }
+    break;
   }
 }
 
@@ -83,8 +90,8 @@ let totalPlaced = 0;
 const t0 = Date.now();
 for (let k = 0; k < RUNS; k++) {
   const run = R.newRun({ seed: 1000 + k });
-  R.chooseGift(run, 0);
   while (true) {
+    if (run.phase === 'gift') R.chooseGift(run, val(run.gift[0]) >= val(run.gift[1]) ? 0 : 1);
     if (run.phase === 'intro') R.beginOrder(run);
     if (run.phase === 'play') {
       const key = `${run.day}-${run.orderIdx}`;
@@ -110,7 +117,7 @@ for (let k = 0; k < RUNS; k++) {
 }
 
 const pct = (n) => ((100 * n) / RUNS).toFixed(1).padStart(5) + '%';
-console.log(`bot=${BOT} runs=${RUNS} time=${Date.now() - t0}ms victories=${pct(victories)}`);
+console.log(`DAY_BASE=${R.DAY_BASE} shop=${SHOP} bot=${BOT} runs=${RUNS} time=${Date.now() - t0}ms victories=${pct(victories)}`);
 for (let d = 1; d <= R.DAYS; d++) for (let o = 0; o < 3; o++) {
   const key = `${d}-${o}`;
   const arr = (scoreBy[key] || []).sort((a, b) => a - b);

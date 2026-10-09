@@ -11,26 +11,28 @@ export const DAYS = 4;
 export const ORDERS_PER_DAY = 3;
 export const BASE_PATCHES = 18;
 export const BASE_DISCARDS = 2;
-export const START_COINS = 4;
-export const REROLL_BASE = 3;
+export const START_COINS = 5;
+export const REROLL_BASE = 2;
+export const INTEREST_CAP = 4;
+export const MONO_TRAY_CHANCE = 0.5;
 
 export const ORDER_KINDS = [
   { key: 'small', name: '작은 주문', reward: 3, scale: 1 },
   { key: 'big', name: '큰 주문', reward: 4, scale: 1.5 },
-  { key: 'boss', name: '장인 의뢰', reward: 5, scale: 2 },
+  { key: 'boss', name: '장인 의뢰', reward: 5, scale: 1.75 },
 ];
 
 // Target for the small order of each day; big/boss multiply by ORDER_KINDS.scale.
 // Calibrated by tools/simulate.mjs.
-export const DAY_BASE = [300, 800, 1800, 4500];
+export const DAY_BASE = [240, 900, 2200, 5500];
 export const ENDLESS_GROWTH = 2.2;
 
 export const BOSSES = {
-  knots: { name: '매듭', desc: '수틀에 매듭 6개가 박힌 채 시작' },
+  knots: { name: '매듭', desc: '수틀에 매듭 8개가 박힌 채 시작' },
   ink: { name: '먹물', desc: '흑색 칸은 칩을 주지 않음' },
   busy: { name: '바쁜 손', desc: '버리기를 쓸 수 없음' },
   short: { name: '짧은 실', desc: '조각이 4개 적음' },
-  big: { name: '큰 천', desc: '4칸 이상 조각만 나옴' },
+  big: { name: '큰 천', desc: '4칸 이상 조각만, 조각 2개 적음' },
   strict: { name: '깐깐한 눈', desc: '최종 배수가 절반' },
 };
 export const BOSS_IDS = Object.keys(BOSSES);
@@ -62,7 +64,7 @@ export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal'
     rng,
     day: 1,
     orderIdx: 0,
-    phase: 'gift',
+    phase: 'intro',
     coins: START_COINS,
     tools: [],
     bosses,
@@ -75,15 +77,17 @@ export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal'
     endless: false,
     stats: { bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0 },
   };
+  prepareOrder(run);
   return run;
 }
 
+/** The first customer's gift is offered after the first order, once the player knows the rules. */
 export function chooseGift(run, i) {
   if (run.phase !== 'gift') return [];
   const id = run.gift[i];
-  if (id) run.tools.push(makeTool(id));
+  if (id && run.tools.length < MAX_TOOLS) run.tools.push(makeTool(id));
   run.gift = null;
-  prepareOrder(run);
+  openShop(run);
   return [{ type: 'gift', id }];
 }
 
@@ -102,7 +106,12 @@ export function prepareOrder(run) {
   let patches = BASE_PATCHES + toolSum(run, 'patches');
   let discards = BASE_DISCARDS + toolSum(run, 'discards');
   if (boss === 'short') patches -= 4;
+  if (boss === 'big') patches -= 2;
   if (boss === 'busy') discards = 0;
+  for (const t of run.tools) {
+    const def = TOOLS[t.id];
+    if (def.onOrderStart) def.onOrderStart(t);
+  }
   run.order = {
     kind: run.orderIdx,
     target: targetFor(run.day, run.orderIdx),
@@ -120,7 +129,7 @@ export function prepareOrder(run) {
   run.board = emptyBoard();
   if (boss === 'knots') {
     let n = 0;
-    while (n < 6) {
+    while (n < 8) {
       const k = int(run.rng, N * N);
       if (run.board[k] === null) { run.board[k] = 'knot'; n++; }
     }
@@ -141,9 +150,9 @@ function shapePool(run) {
   return SHAPES;
 }
 
-function randomPiece(run) {
+function randomPiece(run, color) {
   const shape = weighted(run.rng, shapePool(run), (s) => s.weight);
-  return { shape: shape.id, color: pick(run.rng, COLORS) };
+  return { shape: shape.id, color: color || pick(run.rng, COLORS) };
 }
 
 function refillTray(run) {
@@ -152,7 +161,9 @@ function refillTray(run) {
   // Guarantee at least one placeable patch; jams should come from play, not from the dealer.
   for (let attempt = 0; attempt < 30; attempt++) {
     tray = [];
-    for (let i = 0; i < count; i++) tray.push(randomPiece(run));
+    // Half the trays share one color so single-color seams are a plan, not a miracle.
+    const shared = next(run.rng) < MONO_TRAY_CHANCE ? pick(run.rng, COLORS) : null;
+    for (let i = 0; i < count; i++) tray.push(randomPiece(run, shared));
     if (tray.some((p) => fitsAnywhere(run.board, SHAPE_BY_ID[p.shape]))) break;
     if (attempt === 29) {
       // Last resort: a single dot if there is any empty cell.
@@ -302,7 +313,7 @@ function winOrder(run) {
   lines.push({ label: ORDER_KINDS[o.kind].name + ' 완료', coins: ORDER_KINDS[o.kind].reward });
   const left = Math.min(5, o.patchesLeft);
   if (left > 0) lines.push({ label: `남은 조각 ${o.patchesLeft}개`, coins: left });
-  const interest = Math.min(5, Math.floor(run.coins / 5));
+  const interest = Math.min(INTEREST_CAP, Math.floor(run.coins / 5));
   if (interest > 0) lines.push({ label: '이자 (5닢마다 1)', coins: interest });
   run.tools.forEach((t) => {
     const def = TOOLS[t.id];
@@ -321,6 +332,10 @@ export function collectReward(run) {
   if (finishedRun) {
     run.phase = 'victory';
     return [{ type: 'coins', amount: got }, { type: 'victory' }];
+  }
+  if (run.gift) {
+    run.phase = 'gift';
+    return [{ type: 'coins', amount: got }, { type: 'giftOffer' }];
   }
   openShop(run);
   return [{ type: 'coins', amount: got }];
@@ -398,9 +413,22 @@ export function continueEndless(run) {
 }
 
 export function isValidSave(s) {
-  return !!s && s.v === SAVE_VERSION && s.rng && typeof s.rng.s === 'number' && Array.isArray(s.board) &&
-    s.board.length === N * N && Array.isArray(s.tools) && typeof s.phase === 'string' &&
-    s.tools.every((t) => TOOLS[t.id]);
+  try {
+    if (!s || s.v !== SAVE_VERSION || !s.rng || typeof s.rng.s !== 'number') return false;
+    if (!Array.isArray(s.board) || s.board.length !== N * N) return false;
+    if (!Array.isArray(s.tools) || !s.tools.every((t) => t && TOOLS[t.id] && t.data)) return false;
+    if (!Array.isArray(s.tray) || s.tray.length !== 3) return false;
+    if (!s.tray.every((p) => p === null || (SHAPE_BY_ID[p.shape] && COLORS.includes(p.color)))) return false;
+    const needsOrder = ['intro', 'play', 'reward', 'gift', 'shop', 'over', 'victory'];
+    if (!needsOrder.includes(s.phase)) return false;
+    if (!s.order || typeof s.order.target !== 'number') return false;
+    if (s.phase === 'reward' && !(s.reward && Array.isArray(s.reward.lines))) return false;
+    if (s.phase === 'gift' && !(Array.isArray(s.gift) && s.gift.every((id) => TOOLS[id]))) return false;
+    if (s.phase === 'shop' && !(s.shop && Array.isArray(s.shop.offers) && s.shop.offers.every((o) => TOOLS[o.id]))) return false;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export { idx, N };

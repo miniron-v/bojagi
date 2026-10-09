@@ -29,8 +29,9 @@ export function evaluate(ctx, tools) {
     0,
   );
   chips = cellChips + ctx.lineCount * LINE_CHIPS;
-  mult = ctx.lineCount;
-  steps.push({ src: 'lines', chips, mult, lines: ctx.lineCount });
+  // Multi-line clears grow quadratically so setting up a big clear is a real choice.
+  mult = ctx.lineCount * ctx.lineCount;
+  steps.push({ src: 'lines', chips, mult, lines: ctx.lineCount, cells: ctx.cleared.length });
 
   if (ctx.streak > 1) {
     mult += ctx.streak - 1;
