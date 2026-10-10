@@ -61,7 +61,7 @@ function plannerMove(run) {
         let g = 0;
         if (L.length) {
           const ctx = { lineCount: L.length, rowLines: L.filter((l) => l.type === 'row').length, colLines: L.filter((l) => l.type === 'col').length, monoLines: L.filter((l) => l.mono).length, perfect: filledCount(after) === 0 };
-          const sm = judgeSeam(ctx, run.seams);
+          const sm = judgeSeam(ctx);
           const v = seamValue(sm, run.seams[sm] || 1);
           g = (v.chips + L.length * 40) * v.mult;
         }

@@ -70,6 +70,7 @@ function applySkin() {
 }
 applySkin();
 delete meta.skinsSeen; // from the earlier milestone-unlock version
+delete meta.spotted; // the codex no longer tracks tools only seen in the market
 // challenges became long-term goals (v2): earlier one-run feats and their rewards are reset
 if (meta.challengesV !== 2) {
   meta.challenges = {};
@@ -88,7 +89,7 @@ function noteChallenges(liveRun = null, delay = 0) {
   if (!fresh.length) return fresh;
   if (into) (into.achieved ||= []).push(...fresh.map((c) => c.id));
   setTimeout(() => {
-    toast(`도전 과제 달성! ${fresh.map((c) => c.name).join(', ')} · 「공방 꾸미기」에서 보상을 받아요`, 3000);
+    toast(`도전 과제 달성! ${fresh.map((c) => SKIN_BY_ID[c.skin].name).join(', ')} 천을 「공방 꾸미기」에서 받아요`, 3000);
     sfx.peekWin();
     haptic([12, 40, 12]);
   }, delay);
@@ -106,14 +107,6 @@ function persist() {
   if (!run) return;
   if (run.phase === 'over') store.clearRun();
   else store.saveRun(run);
-}
-
-/** Tools the player has seen in the market or as a gift; shown greyed in the codex until owned. */
-function spot(ids) {
-  meta.spotted ||= [];
-  let changed = false;
-  for (const id of ids) if (!meta.spotted.includes(id)) { meta.spotted.push(id); changed = true; }
-  if (changed) store.saveMeta(meta);
 }
 
 function discover(id) {
@@ -498,9 +491,8 @@ function toolCard(id, { action = '', sold = false, locked = false, inst = null }
 
 function showGift() {
   hint(null);
-  spot(run.gift);
   const html = `<div class="eyebrow">첫 손님의 선물</div><h2>도구를 하나 고르세요</h2>
-    <p class="lead">도구는 엽전과 배수를 키워 줘요. ${MAX_TOOLS}개까지 들 수 있고 장터에서 사고팔 수 있어요.</p>
+    <p class="lead">도구는 점과 배수를 키워 줘요. ${MAX_TOOLS}개까지 들 수 있고 장터에서 사고팔 수 있어요.</p>
     <div class="cards">${run.gift.map((id, i) => toolCard(id, { action: `<button class="btn btn-gold btn-small" data-gift="${i}" ${i === 0 ? 'data-autofocus' : ''}>고르기</button>` })).join('')}</div>`;
   const s = openModal(html);
   on(s, '[data-gift]', once((e, n) => {
@@ -578,7 +570,7 @@ function begin() {
   patchWarned = false;
   if (!meta.tutorial && run.day === 1 && run.orderIdx === 0) { hintStage = 1; hint(`조각을 끌어 수틀에 놓으세요. 조각은 ${run.order.patchesLeft}개뿐이에요`); }
   else if (run.order.boss === 'knots' && teachOnce('knots', '매듭이 든 줄도 나머지를 채우면 매듭째 풀려요', 4200)) { /* taught */ }
-  else if (run.order.boss === 'ink' && teachOnce('ink', '먹물: 흑색 칸은 지워도 엽전을 주지 않아요. 다른 색 줄을 노리세요', 4200)) { /* taught */ }
+  else if (run.order.boss === 'ink' && teachOnce('ink', '먹물: 흑색 칸은 지워도 점을 주지 않아요. 다른 색 줄을 노리세요', 4200)) { /* taught */ }
   else if (run.order.boss === 'strict' && teachOnce('strict', '깐깐한 눈: 모든 배수가 절반이에요. 목표가 그만큼 낮아요', 4200)) { /* taught */ }
   else if (pendingHint) { hint(pendingHint, 3200); pendingHint = null; }
   if (ev.some((e) => e.type === 'stuck')) stuckHint();
@@ -673,7 +665,7 @@ function showPreview(h) {
 
 function tallyHtml(seam, chips, mult, label, win = false) {
   const head = seam ? `<div class="seam">${SEAM_BY_ID[seam].name} ${shapeTag(seam)}<small>${lvTag(seam)}</small></div>` : '';
-  return `${head}<div class="row"><span class="chips"><small>엽전</small><em>${chips}</em></span><span class="x">×</span><span class="mult"><small>배수</small><em>${mult}</em></span></div><div class="label${win ? ' win' : ''}">${label}</div>`;
+  return `${head}<div class="row"><span class="chips"><small>점</small><em>${chips}</em></span><span class="x">×</span><span class="mult"><small>배수</small><em>${mult}</em></span></div><div class="label${win ? ' win' : ''}">${label}</div>`;
 }
 
 el.discardBtn.addEventListener('click', () => {
@@ -805,7 +797,7 @@ function startTally(ev) {
     const lEl = $('.label', tally);
     const boardMid = view.cellCenterApp(3.5, 3.5);
     const topY = view.boardRectInApp().y + view.cell * 2.6;
-    if (teach) hint('지운 모양이 족보가 되고, 엽전 × 배수가 점수예요', 4200);
+    if (teach) hint('지운 모양이 족보가 되고, 점 × 배수가 점수예요', 4200);
     let toolBeat = 420;
     let tick = 0;
     for (const st of result.steps) {
@@ -815,7 +807,7 @@ function startTally(ev) {
       if (st.src === 'seam') {
         chips = st.chips;
         mult = st.mult;
-        label = `${SEAM_BY_ID[st.seam].short} · 엽전 ${st.chips} × 배수 ${st.mult}`;
+        label = `${SEAM_BY_ID[st.seam].short} · 점 ${st.chips} × 배수 ${st.mult}`;
         beat = 420;
         if (st.seam !== 'single') {
           view.text(SEAM_BY_ID[st.seam].name, boardMid.x, boardMid.y, { size: 30, color: '#f3ead6', dur: 1100, rise: 14 });
@@ -837,7 +829,7 @@ function startTally(ev) {
         beat = 320;
       } else {
         const name = TOOLS[st.src].name;
-        if (st.chips) { chips += st.chips; fireTool(st.slot, `엽전 +${st.chips}`, 'chips'); label = `${name} 엽전 +${st.chips}`; }
+        if (st.chips) { chips += st.chips; fireTool(st.slot, `점 +${st.chips}`, 'chips'); label = `${name} 점 +${st.chips}`; }
         if (st.mult) { mult += st.mult; fireTool(st.slot, `+${fmtMult(st.mult)} 배수`, 'mult'); label = `${name} 배수 +${fmtMult(st.mult)}`; }
         if (st.xmult) { mult *= st.xmult; fireTool(st.slot, `×${fmtMult(st.xmult)}`, 'xmult'); label = `${name} 배수 ×${fmtMult(st.xmult)}`; }
         beat = toolBeat;
@@ -987,7 +979,7 @@ function patternCard(pt, i) {
   return `<div class="card pattern${pt.sold ? ' sold' : ''}">
     <div class="art">${seamIcon(pt.id)}</div>
     <div class="min"><div class="name">${seam.name} 본 ${shapeTag(pt.id)} <span class="up">Lv.${lv}→${lv + 1}</span></div>
-      <div class="desc">엽전 ${now.chips}→${nxt.chips}, 배수 ${now.mult}→${nxt.mult}</div></div>
+      <div class="desc">점 ${now.chips}→${nxt.chips}, 배수 ${now.mult}→${nxt.mult}</div></div>
     <button class="btn btn-small ${can ? 'btn-gold' : 'btn-ghost'} price" data-pattern="${i}" ${can ? '' : 'disabled'}>${pt.sold ? '팔림' : `${PATTERN_PRICE}냥`}</button></div>`;
 }
 
@@ -995,7 +987,7 @@ function showSeams(back) {
   const counts = (run && run.stats.seamCounts) || {};
   const sig = run ? signatureSeam() : null;
   const html = `<h2>바느질 족보</h2>
-    <p class="lead">지울 때마다 해당하는 족보 중 가장 비싼 하나로 점수를 매겨요. 홈질은 자라지 않으니, 본으로 다른 기법을 키워 노려 보세요.</p>
+    <p class="lead">지운 모양이 해당하는 족보 중 표에서 가장 위의 하나로 점수를 매겨요. 홈질은 자라지 않으니, 본으로 다른 기법을 키워 노려 보세요.</p>
     <div class="seam-table">${SEAMS.map((sm) => {
       const lv = seamLevel(sm.id);
       const v = seamValue(sm.id, lv);
@@ -1008,7 +1000,6 @@ function showSeams(back) {
 
 function showShop() {
   hint(null);
-  spot(run.shop.offers.map((o) => o.id));
   renderHud();
   const sh = run.shop;
   const full = run.tools.length >= MAX_TOOLS;
@@ -1107,11 +1098,11 @@ function showEnd(victory, ev) {
     <div><small>완료한 주문</small><b>${st.orders}</b></div>
     <div><small>최고 한 땀</small><b>${fmt(st.bestHand)}</b>${endInfo.newHand ? '<span class="new">신기록</span>' : ''}</div></div>`;
   const unlockedNote = endInfo.unlocked && endInfo.unlocked.length
-    ? `<div class="unlock-note">${endInfo.unlocked.map((id) => `<span class="art">${toolArt(TOOLS[id])}</span>`).join('')}<div><b>새 도구가 장터에 나와요</b><span>${endInfo.unlocked.map((id) => TOOLS[id].name).join(', ')}</span></div></div>`
+    ? `<div class="unlock-note">${endInfo.unlocked.map((id) => `<span class="art">${toolArt(TOOLS[id])}</span>`).join('')}<div><b>다음 판부터 장터에 나와요</b><span>${endInfo.unlocked.map((id) => TOOLS[id].name).join(', ')}</span></div></div>`
     : '';
   const shown = endInfo.achieved && endInfo.achieved.length ? endInfo.achieved : endInfo.claims || [];
   const skinNote = shown.length
-    ? `<div class="unlock-note">${shown.map((c) => `<span class="art">${skinSwatch(SKIN_BY_ID[c.skin], true)}</span>`).join('')}<div><b>${endInfo.achieved && endInfo.achieved.length ? '이번 판에 이룬 도전 과제' : '받을 보상이 있어요'}</b><span>${shown.map((c) => c.name).join(', ')} · 「공방 꾸미기」에서 보상을 받아요</span></div></div>`
+    ? `<div class="unlock-note">${shown.map((c) => `<span class="art">${skinSwatch(SKIN_BY_ID[c.skin], true)}</span>`).join('')}<div><b>${endInfo.achieved && endInfo.achieved.length ? '이번 판에 이룬 도전 과제' : '받을 보상이 있어요'}</b><span>${shown.map((c) => SKIN_BY_ID[c.skin].name).join(', ')} 천 · 「공방 꾸미기」에서 받아요</span></div></div>`
     : '';
   const quilt = `<figure class="quilt"><canvas id="quilt" aria-label="이번 판의 조각누비"></canvas><figcaption>이번 판의 조각누비<br><span>주문마다 한 조각 · 일지에 보관돼요</span></figcaption></figure>`;
   const share = run.mode === 'daily' ? '<button class="btn btn-ghost" id="share">결과 복사하기</button>' : '';
@@ -1222,7 +1213,7 @@ function skinRow(k) {
   const c = challengeForSkin(k.id);
   const st = c && challengeState(meta, c.id);
   const goal = c && state !== 'worn' && state !== 'owned'
-    ? `<span class="sr-goal">「${c.name}」 ${c.need}</span>${state === 'locked' ? `<span class="ch-bar"><i style="width:${(100 * st.have) / st.goal}%"></i></span><small class="sr-num">${fmt(st.have)} / ${fmt(st.goal)}</small>` : ''}`
+    ? `<span class="sr-goal">${c.need}</span>${state === 'locked' ? `<span class="ch-bar"><i style="width:${(100 * st.have) / st.goal}%"></i></span><small class="sr-num">${fmt(st.have)} / ${fmt(st.goal)}</small>` : ''}`
     : `<span class="sr-note">${k.note}</span>`;
   const act = state === 'worn' ? '<span class="ch-tag on">쓰는 중</span>'
     : state === 'owned' ? `<button class="btn btn-small" data-wear="${k.id}">쓰기</button>`
@@ -1310,7 +1301,7 @@ function previewSkins(startId, reopen) {
     const c = challengeForSkin(k.id);
     const st = c && challengeState(meta, c.id);
     $('.pv-info', layer).innerHTML = `<span class="pv-tag">미리 보는 중 ${i + 1}/${SKINS.length}</span><b>${k.name}</b><span>${k.note}</span>
-      ${state === 'locked' ? `<span class="pv-goal">「${c.name}」 ${c.need} · ${fmt(st.have)}/${fmt(st.goal)}</span>` : state === 'ready' ? '<span class="pv-goal">도전 달성! 받기만 하면 돼요</span>' : '<span class="pv-goal ok">가진 천이에요</span>'}`;
+      ${state === 'locked' ? `<span class="pv-goal">${c.need} · ${fmt(st.have)}/${fmt(st.goal)}</span>` : state === 'ready' ? '<span class="pv-goal">도전 달성! 받기만 하면 돼요</span>' : '<span class="pv-goal ok">가진 천이에요</span>'}`;
     $('.pv-actions', layer).innerHTML = `<button class="btn btn-small btn-ghost" data-act="back">돌아가기</button>${state === 'owned' || state === 'worn' ? `<button class="btn btn-small btn-seal" data-act="wear">${state === 'worn' ? '쓰는 중' : '이 천 쓰기'}</button>` : ''}`;
   };
   const close = (wearId) => {
@@ -1357,8 +1348,8 @@ function showHow(back) {
     <div class="how">
       <p><b>조각 놓기</b> — 아래 조각을 끌어 수틀에 놓아요. 놓을 때마다 남은 조각이 하나씩 줄어요.</p>
       <p><b>줄 누비기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 누벼지고 점수가 나요.</p>
-      <p><b>바느질 족보</b> — 지운 모양에 따라 기법이 정해져요. 홈질(한 줄), 겹누비(같은 방향 두 줄), 십자수(가로+세로), 납작누비(한 색으로 채운 줄), 세누비(세 줄 이상), 오목누비(한 색 줄 둘 이상), 마무리(판을 다 비움). 기법마다 엽전과 배수가 정해져 있어요.</p>
-      <p><b>엽전 × 배수</b> — 족보의 엽전에 지운 칸마다 5를 더하고, 연달아 지우면 배수가 올라요. 도구가 엽전과 배수를 더 키워요.</p>
+      <p><b>바느질 족보</b> — 지운 모양에 따라 기법이 정해져요. 홈질(한 줄), 겹누비(같은 방향 두 줄), 십자수(가로+세로), 납작누비(한 색으로 채운 줄), 세누비(세 줄 이상), 오목누비(한 색 줄 둘 이상), 마무리(판을 다 비움). 기법마다 점과 배수가 정해져 있어요.</p>
+      <p><b>점 × 배수</b> — 족보의 점에 지운 칸마다 5를 더하고, 연달아 지우면 배수가 올라요. 도구가 점과 배수를 더 키워요.</p>
       <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 놓을 데가 없으면 「조각 바꾸기」로 트레이를 새로 받아요.</p>
       <p><b>장터</b> — 품삯으로 바느질 도구와 바느질 본을 사요. 본은 족보 레벨을 올려 줘요. 한 족보를 키워 빌드를 만들어 보세요. 돈을 모아 두면 ${R.INTEREST_PER}냥마다 이자가 1냥(최대 ${R.INTEREST_CAP}냥) 붙어요.</p>
     </div>
@@ -1368,32 +1359,30 @@ function showHow(back) {
   on(s, '#back', done);
 }
 
-/** Compact codex tile: icon, name and one line; locked tiles show what unlocks them. */
 /**
- * Codex tile, four states: owned (full colour), spotted in the market (greyed but readable),
- * locked behind an unlock goal, or not met yet.
+ * Codex tile, three states: used (name and effect), locked behind an unlock goal (the goal and
+ * progress), or not used yet (how it turns up: its rarity in the market).
  */
+function codexState(id) {
+  if (meta.discovered.includes(id)) return 'owned';
+  return isUnlocked(id, meta) ? 'unknown' : 'locked';
+}
+
 function codexCard(id) {
   const def = TOOLS[id];
-  const owned = meta.discovered.includes(id);
-  const spotted = !owned && (meta.spotted || []).includes(id);
-  const p = !owned && !isUnlocked(id, meta) && progress(id, meta);
-  let state = 'unknown';
-  if (owned) state = 'owned';
-  else if (p) state = 'locked';
-  else if (spotted) state = 'spotted';
-  const name = state === 'owned' || state === 'spotted' ? def.name : state === 'locked' ? '잠김' : '?';
-  const desc = richText(state === 'owned' || state === 'spotted' ? toolDesc(makeTool(id))
-    : state === 'locked' ? `해금: ${p.need} (${p.have}/${p.goal})` : RARITY_NAME[def.rarity]);
+  const state = codexState(id);
+  const p = state === 'locked' && progress(id, meta);
+  const name = state === 'owned' ? def.name : state === 'locked' ? '잠김' : '?';
+  const desc = richText(state === 'owned' ? toolDesc(makeTool(id))
+    : state === 'locked' ? `해금: ${p.need} (${p.have}/${p.goal})` : `${RARITY_NAME[def.rarity]} · 장터에 나와요`);
   return `<div class="codex-card r${def.rarity} cx-${state}"><span class="art">${toolArt(def)}</span>
-    <span class="cx-text"><b>${name}${state === 'spotted' ? '<small>본 적 있음</small>' : ''}</b><span class="desc">${desc}</span></span></div>`;
+    <span class="cx-text"><b>${name}</b><span class="desc">${desc}</span></span></div>`;
 }
 
 function showCodex() {
-  const lockedN = lockedIds(meta).length;
-  const spottedN = (meta.spotted || []).filter((id) => !meta.discovered.includes(id)).length;
+  const lockedN = TOOL_IDS.filter((id) => codexState(id) === 'locked').length;
   const html = `<div class="eyebrow">도구 도감</div><h2>바느질 도구</h2>
-    <p class="lead">써 본 도구 ${meta.discovered.length}/${TOOL_IDS.length}${spottedN ? ` · 장터에서 본 도구 ${spottedN}` : ''}<br>사서 써 보면 도감이 채워져요.${lockedN ? ` 잠긴 도구 ${lockedN}개는 조건을 채우면 장터에 나와요.` : ''}</p>
+    <p class="lead">써 본 도구 ${meta.discovered.length}/${TOOL_IDS.length}${lockedN ? ` · 잠긴 도구 ${lockedN}` : ''}<br>장터에서 사서 써 보면 도감이 채워져요.${lockedN ? ' 잠긴 도구는 조건을 채우면 다음 판부터 장터에 나와요.' : ''}</p>
     <div class="codex">${TOOL_IDS.map((id) => codexCard(id)).join('')}</div>`;
   openModal(html, { close: closeModal });
 }

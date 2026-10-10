@@ -20,7 +20,7 @@ export function evaluate(ctx, tools) {
     return { chips: ctx.placedCells, mult: 1, score: ctx.placedCells, seam: null, steps };
   }
 
-  const seam = ctx.seam || judgeSeam(ctx, ctx.levels);
+  const seam = ctx.seam || judgeSeam(ctx);
   const level = (ctx.levels && ctx.levels[seam]) || 1;
   const base = seamValue(seam, level);
   let chips = base.chips;

@@ -201,17 +201,29 @@ test('run: targets grow monotonically', () => {
   }
 });
 
+test('seams: the judged seam is the shape made, whatever the levels', async () => {
+  const { judgeSeam, SEAMS, seamValue } = await import('../src/core/seams.js');
+  // three parallel lines are 세누비 even when 겹누비 has been leveled far past it (the reported bug)
+  const triple = { lineCount: 3, rowLines: 3, colLines: 0, monoLines: 0, perfect: false };
+  assert.equal(judgeSeam(triple), 'triple');
+  for (const lv of [1, 4, 9]) {
+    const ctx = { ...triple, levels: { double: lv } };
+    assert.equal(evaluate({ ...baseCtx(ctx), ...ctx, cleared: [] }, []).seam, 'triple', `double lv ${lv}`);
+  }
+  // rank and base value point the same way
+  const vals = SEAMS.map((x) => seamValue(x.id, 1)).map((v) => v.chips * v.mult);
+  for (let i = 1; i < vals.length; i++) assert.ok(vals[i] < vals[i - 1], SEAMS[i].id);
+});
+
 test('seams: ranking picks the highest hand', async () => {
   const { judgeSeam } = await import('../src/core/seams.js');
   const j = (o) => judgeSeam({ lineCount: 1, rowLines: 1, colLines: 0, monoLines: 0, perfect: false, ...o });
   assert.equal(j({}), 'single');
   assert.equal(j({ lineCount: 2, rowLines: 2 }), 'double');
   assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1 }), 'cross');
-  // both cross (80×4) and mono (70×4) apply: the more valuable one is scored
+  // both cross and mono apply: rank decides (cross is the higher hand)
   assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1 }), 'cross');
-  assert.equal(judgeSeam({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1, perfect: false }, { mono: 3 }), 'mono');
-  // a leveled 겹누비 is not overridden by an incidental single-color line
-  assert.equal(judgeSeam({ lineCount: 2, rowLines: 2, colLines: 0, monoLines: 1, perfect: false }, { double: 5 }), 'double');
+  assert.equal(j({ lineCount: 2, rowLines: 2, monoLines: 1 }), 'mono');
   assert.equal(j({ lineCount: 1, rowLines: 1, monoLines: 1 }), 'mono');
   assert.equal(j({ lineCount: 3, rowLines: 3, monoLines: 1 }), 'triple');
   assert.equal(j({ lineCount: 2, rowLines: 2, monoLines: 2 }), 'twinMono');
@@ -495,7 +507,7 @@ test('challenges: lifetime goals, live progress from the run in play, claimed by
   assert.ok(C.claimChallenge(meta, 'points300k'));
   assert.ok(!C.claimChallenge(meta, 'points300k'));
   assert.equal(resolveSkin('cheongmyeong', meta).id, 'cheongmyeong');
-  assert.ok(!C.claimChallenge(meta, 'wins3'), 'cannot claim an unmet challenge');
+  assert.ok(!C.claimChallenge(meta, 'points2m'), 'cannot claim an unmet challenge');
   // recordRun keeps the score the player actually made, overshoot included
   const R2 = await import('../src/core/run.js');
   const r = R2.newRun({ seed: 3 });
@@ -529,4 +541,20 @@ test('run points include the overshoot past the target, and each order logs its 
   assert.equal(run.stats.points, h.score, 'points = everything sewn, not the target');
   assert.ok(h.seam === null || typeof h.seam === 'string');
   assert.equal(h.target, run.history[0].target);
+});
+
+test('a tool unlocked during a run only reaches the market from the next run', () => {
+  const locked = ['artisan', 'hoop', 'norigae', 'grandma', 'ruler'];
+  const run = R.newRun({ seed: 5, locked });
+  run.phase = 'reward'; run.reward = { lines: [], total: 0 }; run.gift = null;
+  R.collectReward(run);
+  assert.equal(run.phase, 'shop');
+  const seen = new Set();
+  for (let k = 0; k < 60; k++) {
+    run.coins = 999;
+    run.shop.offers.forEach((o) => seen.add(o.id));
+    assert.ok(R.reroll(run).ok);
+  }
+  for (const id of locked) assert.ok(!seen.has(id), `${id} offered while locked for this run`);
+  assert.ok(seen.size > 10, 'rerolls do show the open pool');
 });

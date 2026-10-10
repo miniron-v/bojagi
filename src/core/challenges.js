@@ -1,16 +1,18 @@
 // 도전 과제 (challenges): long goals that pay out a workroom skin.
 // They are measured on the lifetime record (공방 일지), so they reward playing long and playing
 // well: points sewn over many runs, lines quilted, one great run, a seam grown to level 10, and
-// finishing the whole commission more than once. Meeting one marks it done; the player then
+// a very long tally of points. Meeting one marks it done; the player then
 // claims the reward by hand. Pure functions (meta.challenges = { id: { best, done, claimed } }).
 import { COUNTERS } from './records.js';
 
+// Listed easiest first; the two hard ones close the list. Goals are calibrated with the simulator
+// (tools/simulate.mjs): one run sews ≈ 14k points for a new player and ≈ 90k for a strong one.
 export const CHALLENGES = [
-  { id: 'points300k', name: '삼십만 땀', need: '누적 점수 300,000점', of: (m) => m.points, goal: 300000, skin: 'cheongmyeong' },
-  { id: 'lines500', name: '오백 줄', need: '누빈 줄 누적 500줄', of: (m) => m.clears, goal: 500, skin: 'jaju' },
-  { id: 'run100k', name: '큰 손님', need: '한 판 점수 100,000점', of: (m) => m.bestPoints, goal: 100000, skin: 'deungkkot' },
-  { id: 'level10', name: '한 우물', need: '한 족보를 10레벨까지 (한 판에서)', of: (m) => m.bestLevel, goal: 10, skin: 'dancheong', hard: true },
-  { id: 'wins3', name: '명장', need: '누비 완성 3번', of: (m) => m.wins, goal: 3, skin: 'hanji', hard: true },
+  { id: 'points300k', need: '누적 점수 300,000점', of: (m) => m.points, goal: 300000, skin: 'cheongmyeong' },
+  { id: 'lines500', need: '누빈 줄 누적 500줄', of: (m) => m.clears, goal: 500, skin: 'jaju' },
+  { id: 'run100k', need: '한 판에 100,000점', of: (m) => m.bestPoints, goal: 100000, skin: 'deungkkot' },
+  { id: 'level10', need: '한 판에서 한 족보를 10레벨까지', of: (m) => m.bestLevel, goal: 10, skin: 'dancheong', hard: true },
+  { id: 'points2m', need: '누적 점수 2,000,000점', of: (m) => m.points, goal: 2000000, skin: 'hanji', hard: true },
 ];
 export const CHALLENGE_BY_ID = Object.fromEntries(CHALLENGES.map((c) => [c.id, c]));
 

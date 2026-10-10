@@ -17,12 +17,12 @@ const defs = [
   },
   {
     id: 'needlecase', name: '바늘쌈', rarity: 1, price: 4, art: 'needlecase',
-    desc: () => '줄을 지울 때 엽전 +50',
+    desc: () => '줄을 지울 때 점 +50',
     score: (ctx) => (ctx.lineCount ? [{ chips: 50 }] : []),
   },
   ...COLORS.map((color) => ({
     id: `thread_${color}`, name: THREAD_NAME[color], rarity: 1, price: 4, art: 'thread', color,
-    desc: () => `줄을 지울 때 ${COLOR_NAMES[color]}색 칸 하나마다 엽전 +10`,
+    desc: () => `줄을 지울 때 ${COLOR_NAMES[color]}색 칸 하나마다 점 +10`,
     score: (ctx) => {
       const n = ctx.cleared.filter((c) => c.color === color).length;
       return n ? [{ chips: n * 10 }] : [];
@@ -67,7 +67,7 @@ const defs = [
   },
   {
     id: 'spool', name: '실패', rarity: 2, price: 6, art: 'spool',
-    desc: () => '줄을 지울 때 연속 1회마다 엽전 +30',
+    desc: () => '줄을 지울 때 연속 1회마다 점 +30',
     score: (ctx) => (ctx.lineCount ? [{ chips: 30 * ctx.streak }] : []),
   },
   {
@@ -132,7 +132,7 @@ const defs = [
   },
   {
     id: 'sleeve', name: '색동 소매', rarity: 1, price: 4, art: 'sleeve',
-    desc: () => '겹누비·십자수로 지울 때 엽전 +80',
+    desc: () => '겹누비·십자수로 지울 때 점 +80',
     score: (ctx) => (ctx.seam === 'double' || ctx.seam === 'cross' ? [{ chips: 80 }] : []),
   },
   {
@@ -142,7 +142,7 @@ const defs = [
   },
   {
     id: 'silk', name: '비단', rarity: 3, price: 8, art: 'silk',
-    desc: (inst) => `줄을 지울 때 엽전 +${inst.data.chips || 0} (조각을 놓을 때마다 +3씩 자람, 주문마다 처음부터)`,
+    desc: (inst) => `줄을 지울 때 점 +${inst.data.chips || 0} (조각을 놓을 때마다 +3씩 자람, 주문마다 처음부터)`,
     init: () => ({ chips: 0 }),
     badge: (inst) => `+${inst.data.chips}`,
     onPlace: (inst) => { inst.data.chips += 3; },
