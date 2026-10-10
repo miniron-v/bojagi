@@ -219,14 +219,14 @@ b, .num { font-variant-numeric: tabular-nums; }
 .tally .label { min-height: 1.2em; font-size: 13px; color: var(--muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .tally .label.win { color: var(--good); font-weight: 700; }
 .tally .total { font-family: var(--font-display); font-weight: 800; font-size: 30px; color: var(--gold); line-height: 1; }
-.tally.preview { opacity: .94; }
+.tally.preview { opacity: 1; }
 .tally.preview em { font-size: 20px; }
 .tally.preview .chips, .tally.preview .mult { min-width: 70px; }
 .bump { animation: bump .2s ease-out; }
 @keyframes bump { 50% { transform: scale(1.2); } }
 
 .hint {
-  position: absolute; left: 50%; top: calc(var(--board-bottom, 300px) - 52px); transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px);
+  position: absolute; left: 50%; top: calc(var(--board-bottom, 300px) - 10px); transform: translate(-50%, -100%); width: max-content; max-width: min(calc(100% - 32px), calc(var(--board-w, 320px) - 20px));
   padding: 8px 13px; border-radius: 3px; background: #10162cf0; color: var(--thread); font-size: 13.5px; line-height: 1.4; text-align: center;
   pointer-events: none; opacity: 0; transition: opacity .3s; z-index: 2; outline: 1.5px dashed var(--stitch); outline-offset: -4px;
 }
@@ -498,3 +498,5 @@ b, .num { font-variant-numeric: tabular-nums; }
   .card.pattern .desc .cond { display: none; }
   .shop-tools .btn-small { min-height: 36px; }
 }
+
+.stage.dragging .hint { opacity: 0; transition-duration: .12s; }

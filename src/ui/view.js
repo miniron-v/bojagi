@@ -80,6 +80,7 @@ export class View {
     this.bx = Math.round((this.W - size) / 2);
     this.by = Math.round(this.tallySpace + this.cell * 0.32);
     this.stage.style.setProperty('--board-bottom', `${this.by + this.cell * 8}px`);
+    this.stage.style.setProperty('--board-w', `${this.cell * 8}px`);
     const trayTop = this.by + size + this.cell * 0.6;
     const trayH = Math.max(this.cell * 2.9, this.H - trayTop - 4);
     this.trayRect = { y: trayTop, h: trayH };
@@ -290,15 +291,22 @@ export class View {
   }
 
   /**
-   * Floating text. Plain text gets a soft shadow (no outline); `tag: true` sets it on a small
-   * silk label with a stitched edge, used for seam names and order results.
+   * Floating labels. Every message over the hoop uses the same object: a small silk label with a
+   * stitched edge, one or more lines of text. `text()` is the one-line shorthand.
+   * opts: dur, rise, delay, pop, edge (stitch colour), compact (tighter padding for small numbers)
    */
-  text(str, x, y, { size = 28, color = '#f3ead6', dur = 900, rise = 40, delay = 0, pop = 1.15, weight = 700, tag = false } = {}) {
-    // keep the text inside the hoop width (Hangul glyphs are ~1em wide)
-    const maxW = (this.size || 300) * (tag ? 0.8 : 0.92);
+  label(lines, x, y, { dur = 900, rise = 30, delay = 0, pop = 1.1, edge = 'rgba(226,181,74,.75)', compact = false } = {}) {
+    const maxW = (this.size || 300) * 0.84;
     pop = Math.min(pop, 1.25);
-    size = Math.min(size, maxW / (Math.max(1, [...str].length) * 0.98 * pop));
-    this.texts.push({ str, x, y, size, color, weight, tag, dur: dur * Math.max(0.6, this.speed), rise, t0: performance.now() + delay, pop });
+    const ls = lines.map((l) => {
+      const size = Math.min(l.size || 24, maxW / (Math.max(1, [...l.str].length) * 0.98 * pop));
+      return { str: l.str, size, color: l.color || '#f3ead6', weight: l.weight || 700 };
+    });
+    this.texts.push({ lines: ls, x, y, edge, compact, dur: dur * Math.max(0.6, this.speed), rise, t0: performance.now() + delay, pop });
+  }
+
+  text(str, x, y, { size = 28, color = '#f3ead6', weight = 700, ...opts } = {}) {
+    this.label([{ str, size, color, weight }], x, y, opts);
   }
 
   // ---------- render ----------
@@ -566,32 +574,41 @@ export class View {
       g.globalAlpha = a;
       g.translate(tx.x, tx.y - tx.rise * easeOut(t));
       g.scale(s, s);
-      g.font = `${tx.weight} ${tx.size}px Hahmlet, 'Nanum Myeongjo', serif`;
+      // measure the block
+      const lh = tx.lines.map((l) => l.size * 1.28);
+      let w = 0;
+      tx.lines.forEach((l) => {
+        g.font = `${l.weight} ${l.size}px Hahmlet, 'Nanum Myeongjo', serif`;
+        w = Math.max(w, g.measureText(l.str).width);
+      });
+      const big = Math.max(...tx.lines.map((l) => l.size));
+      const padX = tx.compact ? big * 0.45 : big * 0.7;
+      const padY = tx.compact ? big * 0.2 : big * 0.38;
+      const bw = w + padX * 2;
+      const bh = lh.reduce((p, v) => p + v, 0) + padY * 2;
+      g.shadowColor = 'rgba(0,0,0,.45)';
+      g.shadowBlur = big * 0.5;
+      g.shadowOffsetY = big * 0.15;
+      roundRect(g, -bw / 2, -bh / 2, bw, bh, 4);
+      g.fillStyle = '#1f2a4f';
+      g.fill();
+      g.shadowColor = 'transparent';
+      const inset = tx.compact ? 2.5 : 4;
+      g.setLineDash([Math.max(2.5, big * 0.2), Math.max(2, big * 0.14)]);
+      g.lineWidth = Math.max(1, big * 0.05);
+      g.strokeStyle = tx.edge;
+      roundRect(g, -bw / 2 + inset, -bh / 2 + inset, bw - inset * 2, bh - inset * 2, 2);
+      g.stroke();
+      g.setLineDash([]);
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      if (tx.tag) {
-        const w = g.measureText(tx.str).width + tx.size * 1.3;
-        const h = tx.size * 1.75;
-        g.shadowColor = 'rgba(0,0,0,.45)';
-        g.shadowBlur = tx.size * 0.5;
-        g.shadowOffsetY = tx.size * 0.15;
-        roundRect(g, -w / 2, -h / 2, w, h, 4);
-        g.fillStyle = '#1f2a4f';
-        g.fill();
-        g.shadowColor = 'transparent';
-        g.setLineDash([tx.size * 0.22, tx.size * 0.16]);
-        g.lineWidth = Math.max(1, tx.size * 0.06);
-        g.strokeStyle = 'rgba(226,181,74,.75)';
-        roundRect(g, -w / 2 + 4, -h / 2 + 4, w - 8, h - 8, 2);
-        g.stroke();
-        g.setLineDash([]);
-      } else {
-        g.shadowColor = 'rgba(20,27,51,.85)';
-        g.shadowBlur = Math.max(4, tx.size * 0.35);
-        g.shadowOffsetY = Math.max(1, tx.size * 0.06);
-      }
-      g.fillStyle = tx.color;
-      g.fillText(tx.str, 0, tx.size * 0.04);
+      let yy = -bh / 2 + padY;
+      tx.lines.forEach((l, i) => {
+        g.font = `${l.weight} ${l.size}px Hahmlet, 'Nanum Myeongjo', serif`;
+        g.fillStyle = l.color;
+        g.fillText(l.str, 0, yy + lh[i] / 2 + l.size * 0.04);
+        yy += lh[i];
+      });
       g.restore();
       return true;
     });

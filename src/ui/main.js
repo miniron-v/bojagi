@@ -480,9 +480,11 @@ function showIntro() {
     closeModal();
     begin();
     const mid = view.cellCenterApp(3.5, 3.5);
-    view.text(`${dayLabel()}  ${kindName(o.kind)}`, mid.x, mid.y - view.cell * 1.3, { size: 24, color: '#b3b8cf', dur: 1700, rise: 8, pop: 1.1 });
-    view.text(`목표 ${fmt(o.target)}`, mid.x, mid.y - view.cell * 0.1, { size: 42, color: '#e2b54a', dur: 1700, rise: 8, pop: 1.3, delay: 80 });
-    view.text(`조각 ${o.patchesLeft}개 안에`, mid.x, mid.y + view.cell * 1.0, { size: 22, color: '#f3ead6', dur: 1700, rise: 8, pop: 1.1, delay: 160 });
+    view.label([
+      { str: `${dayLabel()} ${kindName(o.kind)}`, size: 17, color: '#b3b8cf', weight: 500 },
+      { str: `목표 ${fmt(o.target)}`, size: 38, color: '#e2b54a', weight: 800 },
+      { str: `조각 ${o.patchesLeft}개 안에`, size: 17, color: '#f3ead6', weight: 600 },
+    ], mid.x, mid.y, { dur: 1900, rise: 10, pop: 1.08 });
     sfx.ui();
     return;
   }
@@ -534,14 +536,17 @@ function stuckHint() {
 
 // ---------- play ----------
 view.handlers.canDrag = () => !busy && !!run && run.phase === 'play' && el.modal.hidden;
+const stage = $('#stage');
 view.handlers.pickup = () => {
   unlock(); sfx.pick(); haptic(6); closeTip(); lastHoverKey = null;
+  stage.classList.add('dragging'); // hints step aside while the player aims
   // picking up the next patch finishes the running tally so the preview can take its place
   if (tallyJob) tallyJob.flush();
 };
-view.handlers.cancel = (i, wasValid) => { if (!wasValid) sfx.invalid(); showPreview(null); };
+view.handlers.cancel = (i, wasValid) => { stage.classList.remove('dragging'); if (!wasValid) sfx.invalid(); showPreview(null); };
 view.handlers.hover = (h) => showPreview(h);
 view.handlers.drop = (i, r, c, piece) => {
+  stage.classList.remove('dragging');
   if (busy || !run || run.phase !== 'play' || !el.modal.hidden) return false;
   // the tray may have changed under the finger (discard); never place a different patch
   if (JSON.stringify(run.tray[i]) !== JSON.stringify(piece)) return false;
@@ -632,7 +637,7 @@ async function playEvents(events) {
       case 'tray': {
         view.setTray(run.tray, fitsOf());
         const t = run.tray.filter(Boolean);
-        if (t.length >= 2 && t.every((p) => p.color === t[0].color)) teachOnce('monoTray', '모두 같은 색 조각이에요. 한 줄을 한 색으로 채우면 단색 솔기!', 4000);
+        if (t.length >= 2 && t.every((p) => p.color === t[0].color)) teachOnce('monoTray', '같은 색 조각들! 한 줄을 한 색으로 채우면 단색 솔기', 4000);
         break;
       }
       case 'discard':
@@ -669,7 +674,7 @@ function scoreEvent(ev) {
     if (lastPlaced) {
       const cs = lastPlaced.cells;
       const p = view.cellCenterApp(cs.reduce((a, q) => a + q[0], 0) / cs.length, cs.reduce((a, q) => a + q[1], 0) / cs.length);
-      view.text(`+${result.score}`, p.x, p.y - view.cell * 0.4, { size: 18, color: '#f4ead3', dur: 600, rise: 26, pop: 1.2 });
+      view.text(`+${result.score}`, p.x, p.y - view.cell * 0.4, { size: 14, color: '#f3ead6', dur: 650, rise: 24, pop: 1.1, compact: true, edge: 'rgba(243,234,214,.35)' });
     }
     setBar();
     if (hintStage === 1) { hintStage = 2; hint('가로나 세로 한 줄을 채우면 꿰매져요'); }
@@ -728,7 +733,7 @@ function startTally(ev) {
         label = SEAM_BY_ID[st.seam].how;
         beat = 420;
         if (st.seam !== 'single') {
-          view.text(SEAM_BY_ID[st.seam].name, boardMid.x, boardMid.y, { size: 30, color: '#f3ead6', dur: 1100, rise: 14, tag: true });
+          view.text(SEAM_BY_ID[st.seam].name, boardMid.x, boardMid.y, { size: 30, color: '#f3ead6', dur: 1100, rise: 14 });
         }
         if (st.seam === 'perfect') { sfx.perfect(); view.confetti(50); }
         sfx.stitch(2, ev.streak);
@@ -739,7 +744,7 @@ function startTally(ev) {
         mult += st.mult;
         label = `연속 ${st.streak}번째 · 배수 +${st.mult}`;
         beat = 320;
-        view.text(`연속 ${st.streak}`, boardMid.x, topY, { size: 26, color: '#e2b54a', dur: 900, rise: 20 });
+        view.text(`연속 ${st.streak}`, boardMid.x, topY, { size: 20, color: '#e2b54a', dur: 900, rise: 20, compact: true });
         if (st.streak === 2) teachOnce('streak', '연달아 지우면 배수가 올라가요. 조각 3개 안에 다시 지우면 이어져요', 4000);
       } else if (st.src === 'boss') {
         mult *= st.xmult;
@@ -816,7 +821,10 @@ async function winSequence() {
   hint(null);
   await view.wait(200);
   const mid = view.cellCenterApp(3.5, 3.5);
-  view.text('주문 완료', mid.x, mid.y, { size: 40, color: '#e2b54a', dur: 1500, rise: 10, tag: true, weight: 800 });
+  view.label([
+    { str: '주문 완료', size: 40, color: '#e2b54a', weight: 800 },
+    { str: `${fmt(run.order.score)} / ${fmt(run.order.target)}`, size: 16, color: '#b3b8cf', weight: 500 },
+  ], mid.x, mid.y, { dur: 1500, rise: 10 });
   sfx.win();
   haptic([30, 40, 30, 40, 60]);
   view.confetti(80);
@@ -843,7 +851,10 @@ async function failSequence(ev) {
   haptic([60, 40, 60]);
   view.shake(3);
   const mid = view.cellCenterApp(3.5, 3.5);
-  view.text(ev.reason === 'jam' ? '놓을 자리가 없어요' : '조각이 다 떨어졌어요', mid.x, mid.y, { size: 30, color: '#ff9b8c', dur: 1400, rise: 6 });
+  view.label([
+    { str: ev.reason === 'jam' ? '놓을 자리가 없어요' : '조각이 다 떨어졌어요', size: 26, color: '#ff9b8c', weight: 700 },
+    { str: `목표까지 ${fmt(Math.max(0, ev.short))}점`, size: 16, color: '#b3b8cf', weight: 500 },
+  ], mid.x, mid.y, { dur: 1500, rise: 6, edge: 'rgba(198,61,49,.8)' });
   await view.wait(1000);
   busy = false;
   showEnd(false, ev);
