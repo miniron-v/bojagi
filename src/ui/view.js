@@ -35,6 +35,7 @@ export class View {
     this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.speed = 1;
     this.labelBg = '#1f2a4f'; // replaced by setSkin()
+    this.trayRim = '#f3ead659';
     this.wood = undefined;
     this.handlers = { canDrag: () => true, drop: () => false, hover: () => {}, pickup: () => {}, cancel: () => {} };
     this.boss = null;
@@ -329,6 +330,7 @@ export class View {
   /** Colours that follow the workroom skin: silk labels and the hoop's wood. */
   setSkin(skin) {
     this.labelBg = skin.silk;
+    this.trayRim = skin.onGround + '59';
     this.wood = skin.wood;
     this.hoopCache = null;
   }
@@ -512,7 +514,7 @@ export class View {
         if (rt >= 1) this.returning = null;
       }
       const fit = this.trayFit[i];
-      this.drawShape(g, shape, p.color, cx, cy, cell * s, fit ? 1 : 0.45);
+      this.drawShape(g, shape, p.color, cx, cy, cell * s, fit ? 1 : 0.45, true);
     }
 
     // dragged piece on top
@@ -530,9 +532,18 @@ export class View {
     }
   }
 
-  drawShape(g, shape, color, cx, cy, cs, alpha) {
+  drawShape(g, shape, color, cx, cy, cs, alpha, rim = false) {
     const x0 = cx - (shape.w * cs) / 2;
     const y0 = cy - (shape.h * cs) / 2;
+    // tray pieces lie on the skin's ground, which may share a patch colour: outline them in the
+    // ground's lettering colour so every piece reads on every cloth
+    if (rim) {
+      g.save();
+      g.fillStyle = this.trayRim;
+      const pad = Math.max(1.5, cs * 0.07);
+      for (const [r, c] of shape.cells) { roundRect(g, x0 + c * cs - pad + cs * 0.04, y0 + r * cs - pad + cs * 0.04, cs * 0.92 + pad * 2, cs * 0.92 + pad * 2, cs * 0.2); g.fill(); }
+      g.restore();
+    }
     for (const [r, c] of shape.cells) this.drawPatch(g, color, x0 + c * cs, y0 + r * cs, cs, alpha);
   }
 

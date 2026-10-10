@@ -72,7 +72,7 @@ body {
 }
 button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
 button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-#title button:focus-visible, .hud-top button:focus-visible { outline-color: var(--on-ground); }
+#title button:focus-visible, .hud-top button:focus-visible, .tools button:focus-visible, .tools .tool:focus-visible, .hud-bottom button:focus-visible { outline-color: var(--on-ground); }
 b, .num { font-variant-numeric: tabular-nums; }
 
 #app {
@@ -621,4 +621,4 @@ b, .num { font-variant-numeric: tabular-nums; }
 .skin-card.just { animation: skinIn .6s cubic-bezier(.2,1.5,.4,1); }
 @keyframes skinIn { 0% { transform: scale(.85); } 60% { transform: scale(1.06); } 100% { transform: none; } }
 #btn-skin.has-claim::after { content: ''; position: absolute; top: -4px; right: -4px; width: 12px; height: 12px; border-radius: 50%;
-  background: var(--seal); box-shadow: 0 0 0 2px var(--ground); animation: glow 1.6s ease-in-out infinite; }
+  background: var(--seal); box-shadow: 0 0 0 2px var(--on-ground); animation: glow 1.6s ease-in-out infinite; }

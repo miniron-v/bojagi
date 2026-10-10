@@ -64,7 +64,7 @@ export function paintPatch(g, color, w, h) {
     g.beginPath(); g.moveTo(i + span, 0); g.lineTo(i, span); g.stroke();
   }
   g.restore();
-  // dark cloth needs a light rim to read on the indigo ground
+  // dark cloth gets a light rim so it reads against dark grounds and its neighbours
   if (color === 'black' || color === 'knot') {
     rr(g, inset + 0.5, inset + 0.5, w - inset * 2 - 1, h - inset * 2 - 1, r);
     g.strokeStyle = 'rgba(244,234,211,.32)';

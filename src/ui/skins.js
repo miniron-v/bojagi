@@ -35,7 +35,7 @@ export const SKINS = [
     // 단청: 뇌록 磊綠 #398885 ground, 석간주 石間硃 #A06549 posts, a cinnabar frame
     id: 'dancheong', name: '단청', note: '뇌록 바탕에 석간주 기둥',
     ground: '#2c706c', cloth: '#2f7470', onGround: '#f3ead6', onGround2: '#dcebe8', onAlert: '#ffd0c4',
-    silk: '#7a4430', silk2: '#874c37', silk3: '#a0644a', deep: '#5a3221', veil: '#1e100a',
+    silk: '#7a4430', silk2: '#874c37', silk3: '#925840', deep: '#5a3221', veil: '#1e100a',
     rare: '#6e4a6a', pattern: '#7a4440', muted: '#f3e2d6', dim: '#e0c2b2', wood: WOOD.cinnabar,
   },
   {
@@ -48,7 +48,7 @@ export const SKINS = [
   {
     id: 'deungkkot', name: '등꽃', note: '등나무 꽃 빛 사에 흑단 수틀',
     ground: '#bba8e0', cloth: '#b6a2dc', onGround: '#2e1a4f', onGround2: '#4b3672', onAlert: '#6e1a12',
-    silk: '#5e3f8e', silk2: '#6e4fa2', silk3: '#8567b9', deep: '#46306d', veil: '#1f1433',
+    silk: '#5e3f8e', silk2: '#6e4fa2', silk3: '#7a5aac', deep: '#46306d', veil: '#1f1433',
     rare: '#5a3fa8', pattern: '#7a3f80', muted: '#e8dff5', dim: '#c3b4de', wood: WOOD.ebony,
   },
   {
