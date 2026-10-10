@@ -13,7 +13,8 @@ const SHOP = process.argv[4] || 'value'; // value | rarity
 if (process.argv[5]) process.argv[5].split(',').forEach((v, i) => { R.DAY_BASE[i] = +v; });
 // rough hand-tuned tool values for the "planner" shopper
 const VAL = { lantern: 8, thimble: 8, coins: 7, silk: 8, iron: 9, norigae: 8, spool: 8, grandma: 8, tape: 7, needlecase: 6,
-  lamp: 6, scissors: 7, hoop: 7, artisan: 7, ruler: 6, obang: 6, pincushion: 5, sewingbox: 4, pouch: 3 };
+  lamp: 6, scissors: 7, hoop: 7, artisan: 7, ruler: 6, obang: 6, pincushion: 5, sewingbox: 4, pouch: 3,
+  stamp: 8, manual: 7, sleeve: 6 };
 const val = (id) => (SHOP === 'value' ? (VAL[id] || 4) : TOOLS[id].rarity);
 
 function boardQuality(board) {
@@ -79,6 +80,13 @@ function shopBot(run) {
         if (val(run.tools[worst].id) < val(o.id)) { R.sell(run, worst); R.buy(run, o.i); continue; }
       } else { R.buy(run, o.i); continue; }
     }
+    // the planner commits: it levels the seam it has made most often
+    if (SHOP === 'value') {
+      const counts = run.stats.seamCounts || {};
+      const fav = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || 'single';
+      const pi = (run.shop.patterns || []).findIndex((p) => !p.sold && (p.id === fav || counts[p.id] >= (counts[fav] || 0) * 0.5));
+      if (pi >= 0 && R.buyPattern(run, pi).ok) continue;
+    }
     if (SHOP === 'value' && run.coins >= run.shop.rerollCost + 8 && run.tools.some((t) => val(t.id) < 7)) { R.reroll(run); continue; }
     break;
   }
@@ -126,4 +134,5 @@ for (let d = 1; d <= R.DAYS; d++) for (let o = 0; o < 3; o++) {
   const med = arr.length ? arr[Math.floor(arr.length / 2)].toFixed(2) : '-';
   console.log(`day ${d} ${['small', 'big ', 'boss'][o]} target ${String(R.targetFor(d, o)).padStart(6)} reach ${pct(reach[key] || 0)}  median score/target ${med}`);
 }
+const seamTotals = {};
 console.log('ends:', Object.entries(ends).sort().map(([k, v]) => `${k}=${v}`).join('  '));

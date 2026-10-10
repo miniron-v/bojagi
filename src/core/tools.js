@@ -1,5 +1,6 @@
 // Sewing tools = the score engine (Balatro jokers).
-// score(ctx, inst) returns effects: { chips } | { mult } | { xmult }.
+// score(ctx, inst) returns effects: { chips } | { mult } | { xmult }. ctx.seam / ctx.level name the
+// seam hand being scored (see seams.js) so tools can build around one hand.
 // Phases are applied in fixed order (chips → +mult → ×mult), so slot order never matters.
 
 import { COLORS, COLOR_NAMES } from './shapes.js';
@@ -109,8 +110,30 @@ const defs = [
   },
   {
     id: 'artisan', name: '장인의 손', rarity: 3, price: 8, art: 'hand',
-    desc: () => '단색 솔기 하나마다 추가 ×1.5',
-    score: (ctx) => (ctx.monoLines ? [{ xmult: Math.pow(1.5, ctx.monoLines) }] : []),
+    desc: () => '단색 솔기·쌍단색으로 지우면 ×2.5',
+    score: (ctx) => (ctx.seam === 'mono' || ctx.seam === 'twinMono' ? [{ xmult: 2.5 }] : []),
+  },
+  {
+    id: 'stamp', name: '장인 도장', rarity: 2, price: 6, art: 'stamp',
+    desc: () => '가장 공들인(레벨이 제일 높은) 족보로 지우면 ×2. 레벨 2 이상부터',
+    score: (ctx) => {
+      if (!ctx.lineCount || !ctx.levels) return [];
+      const top = Math.max(...Object.values(ctx.levels));
+      return top >= 2 && ctx.level === top ? [{ xmult: 2 }] : [];
+    },
+  },
+  {
+    id: 'manual', name: '침선 교본', rarity: 2, price: 5, art: 'book',
+    desc: (inst) => `줄을 지울 때 배수 +${inst.data.mult || 0}. 바느질 본을 살 때마다 +2씩 커짐`,
+    init: () => ({ mult: 0 }),
+    badge: (inst) => `+${inst.data.mult}`,
+    onPattern: (inst) => { inst.data.mult += 2; },
+    score: (ctx, inst) => (ctx.lineCount && inst.data.mult ? [{ mult: inst.data.mult }] : []),
+  },
+  {
+    id: 'sleeve', name: '색동 소매', rarity: 1, price: 4, art: 'sleeve',
+    desc: () => '겹솔기·십자솔기로 지우면 칩 +80',
+    score: (ctx) => (ctx.seam === 'double' || ctx.seam === 'cross' ? [{ chips: 80 }] : []),
   },
   {
     id: 'coins', name: '엽전 꾸러미', rarity: 3, price: 7, art: 'coins',

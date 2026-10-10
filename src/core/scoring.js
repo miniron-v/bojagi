@@ -1,62 +1,53 @@
 // Chips × Mult evaluation for one placement. Returns a step-by-step breakdown so the UI
 // can replay it (Balatro-style tally) and the final integer score.
 import { TOOLS } from './tools.js';
+import { judgeSeam, seamValue } from './seams.js';
 
 export const CELL_CHIPS = 5;
-export const LINE_CHIPS = 10;
-export const PERFECT_CHIPS = 100;
-export const MONO_XMULT = 2;
 
 /**
  * ctx: { lineCount, rowLines, colLines, monoLines, cleared, placedCells, streak,
- *        clearIndex, perfect, emptyAfter, coins, discardsLeft, boss }
+ *        clearIndex, perfect, emptyAfter, coins, discardsLeft, boss, levels, topSeam, patterns }
  * tools: tool instances (slot order)
+ * Order: seam base → each cleared cell → streak → tool chips → tool +mult → tool ×mult → boss.
  */
 export function evaluate(ctx, tools) {
   const steps = [];
-  let chips = 0;
-  let mult = 1;
 
   if (!ctx.lineCount) {
     // Plain placement: small trickle so every move feels like progress.
-    chips = ctx.placedCells;
     steps.push({ src: 'place', chips: ctx.placedCells });
-    return { chips, mult, score: chips, steps };
+    return { chips: ctx.placedCells, mult: 1, score: ctx.placedCells, seam: null, steps };
   }
+
+  const seam = ctx.seam || judgeSeam(ctx);
+  const level = (ctx.levels && ctx.levels[seam]) || 1;
+  const base = seamValue(seam, level);
+  let chips = base.chips;
+  let mult = base.mult;
+  steps.push({ src: 'seam', seam, level, chips: base.chips, mult: base.mult, set: true });
 
   const cellChips = ctx.cleared.reduce(
     (s, c) => s + (ctx.boss === 'ink' && c.color === 'black' ? 0 : CELL_CHIPS),
     0,
   );
-  chips = cellChips + ctx.lineCount * LINE_CHIPS;
-  // Multi-line clears grow quadratically so setting up a big clear is a real choice.
-  mult = ctx.lineCount * ctx.lineCount;
-  steps.push({ src: 'lines', chips, mult, lines: ctx.lineCount, cells: ctx.cleared.length });
+  chips += cellChips;
+  steps.push({ src: 'cells', chips: cellChips, cells: ctx.cleared.length });
 
   if (ctx.streak > 1) {
     mult += ctx.streak - 1;
     steps.push({ src: 'streak', mult: ctx.streak - 1, streak: ctx.streak });
   }
-  if (ctx.perfect) {
-    chips += PERFECT_CHIPS;
-    steps.push({ src: 'perfect', chips: PERFECT_CHIPS });
-  }
 
   const effects = [];
+  const tctx = { ...ctx, seam, level };
   tools.forEach((inst, slot) => {
     const def = TOOLS[inst.id];
     if (!def.score) return;
-    for (const e of def.score(ctx, inst)) effects.push({ ...e, slot, src: inst.id });
+    for (const e of def.score(tctx, inst)) effects.push({ ...e, slot, src: inst.id });
   });
-
   for (const e of effects) if (e.chips) { chips += e.chips; steps.push(e); }
   for (const e of effects) if (e.mult) { mult += e.mult; steps.push(e); }
-
-  // Mono seams are a base rule, applied as the first multiplier.
-  for (let i = 0; i < ctx.monoLines; i++) {
-    mult *= MONO_XMULT;
-    steps.push({ src: 'mono', xmult: MONO_XMULT });
-  }
   for (const e of effects) if (e.xmult) { mult *= e.xmult; steps.push(e); }
 
   if (ctx.boss === 'strict') {
@@ -66,5 +57,5 @@ export function evaluate(ctx, tools) {
 
   mult = Math.max(1, Math.round(mult * 10) / 10);
   const score = Math.floor(chips * mult);
-  return { chips, mult, score, steps };
+  return { chips, mult, score, seam, level, steps };
 }

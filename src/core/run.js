@@ -5,6 +5,7 @@ import { SHAPES, SHAPE_BY_ID, COLORS } from './shapes.js';
 import { N, emptyBoard, canPlace, fitsAnywhere, paint, fullLines, clearLines, filledCount } from './board.js';
 import { TOOLS, TOOL_IDS, MAX_TOOLS, makeTool, sellPrice } from './tools.js';
 import { evaluate } from './scoring.js';
+import { SEAM_IDS, PATTERN_PRICE, startingLevels, judgeSeam } from './seams.js';
 
 export const SAVE_VERSION = 1;
 export const DAYS = 4;
@@ -23,6 +24,7 @@ export const BIG_PENALTY = 2;
 export const BIG_MIN_SIZE = 4;
 export const BOSS_ORDER = 2; // index of the boss order within a day
 export const MONO_TRAY_CHANCE = 0.5;
+export const PATTERN_OFFERS = 2;
 
 export const ORDER_KINDS = [
   { key: 'small', name: '작은 주문', reward: 3, scale: 1 },
@@ -32,24 +34,28 @@ export const ORDER_KINDS = [
 
 // Target for the small order of each day; big/boss multiply by ORDER_KINDS.scale.
 // Calibrated by tools/simulate.mjs.
-export const DAY_BASE = [240, 900, 2200, 5500];
-export const ENDLESS_GROWTH = 2.2;
+export const DAY_BASE = [400, 1700, 4800, 12500];
+export const ENDLESS_GROWTH = 1.9; // must exceed the boss scale so targets keep rising
 
 export const BOSSES = {
-  knots: { name: '매듭', desc: `수틀에 매듭 ${KNOTS}개가 박힌 채 시작` },
-  ink: { name: '먹물', desc: '흑색 칸은 칩을 주지 않음' },
-  busy: { name: '바쁜 손', desc: '조각 바꾸기를 쓸 수 없음' },
-  short: { name: '짧은 실', desc: `조각이 ${SHORT_PENALTY}개 적음` },
-  big: { name: '큰 천', desc: `${BIG_MIN_SIZE}칸 이상 조각만, 조각 ${BIG_PENALTY}개 적음` },
-  strict: { name: '깐깐한 눈', desc: '최종 배수가 절반' },
+  knots: { scale: 1.75, name: '매듭', desc: `매듭 ${KNOTS}개가 칸을 막고 시작. 매듭이 든 줄을 채우면 함께 풀려요` },
+  ink: { scale: 1.6, name: '먹물', desc: '흑색 칸은 지워도 칩이 0' },
+  busy: { scale: 1.5, name: '바쁜 손', desc: '조각 바꾸기를 쓸 수 없음' },
+  short: { scale: 1.5, name: '짧은 실', desc: `조각이 ${SHORT_PENALTY}개 적음` },
+  big: { scale: 1.75, name: '큰 천', desc: `${BIG_MIN_SIZE}칸 이상 조각만, 조각 ${BIG_PENALTY}개 적음` },
+  strict: { scale: 1.2, name: '깐깐한 눈', desc: '모든 점수의 배수가 절반' },
 };
 export const BOSS_IDS = Object.keys(BOSSES);
+// Boss rules arrive easiest first: one day introduces one new kind of pressure.
+export const BOSS_TIERS = [['short', 'big'], ['knots', 'ink'], ['busy', 'knots', 'ink'], ['strict']];
 
-export function targetFor(day, orderIdx) {
+/** Order target. Boss orders scale by their rule: harsher rules ask for less. */
+export function targetFor(day, orderIdx, boss = null) {
   let base;
   if (day <= DAYS) base = DAY_BASE[day - 1];
   else base = DAY_BASE[DAYS - 1] * Math.pow(ENDLESS_GROWTH, day - DAYS);
-  const t = base * ORDER_KINDS[orderIdx].scale;
+  const scale = boss && BOSSES[boss] ? BOSSES[boss].scale : ORDER_KINDS[orderIdx].scale;
+  const t = base * scale;
   const mag = Math.pow(10, Math.max(1, Math.floor(Math.log10(t)) - 1));
   return Math.round(t / mag) * mag;
 }
@@ -62,8 +68,10 @@ export function dailySeed(date = new Date()) {
 export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal', dailyKey = null, locked = [] } = {}) {
   const rng = createRng(seed);
   const bosses = [];
-  let pool = shuffle(rng, BOSS_IDS);
-  for (let d = 0; d < DAYS; d++) bosses.push(pool[d % pool.length]);
+  for (let d = 0; d < DAYS; d++) {
+    const tier = BOSS_TIERS[Math.min(d, BOSS_TIERS.length - 1)].filter((b) => !bosses.includes(b));
+    bosses.push(pick(rng, tier.length ? tier : BOSS_IDS));
+  }
   const run = {
     v: SAVE_VERSION,
     seed,
@@ -84,6 +92,7 @@ export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal'
     shop: null,
     reward: null,
     history: [],
+    seams: startingLevels(),
     endless: false,
     stats: emptyStats(),
   };
@@ -92,7 +101,10 @@ export function newRun({ seed = (Math.random() * 2 ** 32) >>> 0, mode = 'normal'
 }
 
 export function emptyStats() {
-  return { bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0, monos: 0, crosses: 0, triples: 0 };
+  return {
+    bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0, monos: 0, crosses: 0, triples: 0,
+    seamCounts: {}, patterns: 0,
+  };
 }
 
 /** The first customer's gift is offered after the first order, once the player knows the rules. */
@@ -121,7 +133,8 @@ export function nextOrderOf(run) {
   let day = run.day;
   let orderIdx = run.orderIdx + 1;
   if (orderIdx >= ORDERS_PER_DAY) { orderIdx = 0; day += 1; }
-  return { day, orderIdx, target: targetFor(day, orderIdx), boss: bossFor(run, day, orderIdx) };
+  const boss = bossFor(run, day, orderIdx);
+  return { day, orderIdx, target: targetFor(day, orderIdx, boss), boss };
 }
 
 function toolSum(run, key) {
@@ -141,7 +154,7 @@ export function prepareOrder(run) {
   }
   run.order = {
     kind: run.orderIdx,
-    target: targetFor(run.day, run.orderIdx),
+    target: targetFor(run.day, run.orderIdx, boss),
     boss,
     score: 0,
     patchesLeft: patches,
@@ -250,6 +263,7 @@ function scorePlacement(run, painted, lines, shape, dry) {
   const o = run.order;
   const streak = lines.length ? o.streak + 1 : 0;
   const ctx = {
+    levels: run.seams,
     lineCount: lines.length,
     rowLines: lines.filter((l) => l.type === 'row').length,
     colLines: lines.filter((l) => l.type === 'col').length,
@@ -264,6 +278,7 @@ function scorePlacement(run, painted, lines, shape, dry) {
     discardsLeft: o.discardsLeft,
     boss: o.boss,
   };
+  ctx.seam = judgeSeam(ctx);
   // Tool state must not leak from previews: use copies when dry.
   let tools = run.tools;
   if (dry) {
@@ -311,6 +326,8 @@ export function place(run, i, r, c) {
     run.stats.monos += ctx.monoLines;
     if (ctx.rowLines && ctx.colLines) run.stats.crosses += 1;
     if (lines.length >= 3) run.stats.triples += 1;
+    const sc = (run.stats.seamCounts ||= {});
+    sc[ctx.seam] = (sc[ctx.seam] || 0) + 1;
     run.tools.forEach((t, slot) => {
       const def = TOOLS[t.id];
       if (def.after && def.after(ctx, t)) lateGrow.push({ type: 'toolGrow', slot, late: true });
@@ -407,9 +424,38 @@ function rollOffers(run) {
   return offers;
 }
 
+function rollPatterns(run) {
+  // perfect-clear patterns are rarer: that seam is a long shot to build around
+  const pool = SEAM_IDS.slice();
+  const out = [];
+  for (let k = 0; k < PATTERN_OFFERS; k++) {
+    const id = weighted(run.rng, pool.filter((x) => !out.some((o) => o.id === x)), (x) => (x === 'perfect' ? 0.4 : 1));
+    out.push({ id, sold: false });
+  }
+  return out;
+}
+
 function openShop(run) {
   run.phase = 'shop';
-  run.shop = { offers: rollOffers(run), rerollCost: REROLL_BASE };
+  run.shop = { offers: rollOffers(run), patterns: rollPatterns(run), rerollCost: REROLL_BASE };
+}
+
+/** Buy a pattern paper (본): raises that seam's level for the rest of the run. */
+export function buyPattern(run, i) {
+  if (run.phase !== 'shop') return { ok: false, reason: 'phase' };
+  const offer = run.shop.patterns && run.shop.patterns[i];
+  if (!offer || offer.sold) return { ok: false, reason: 'sold' };
+  if (run.coins < PATTERN_PRICE) return { ok: false, reason: 'coins' };
+  run.coins -= PATTERN_PRICE;
+  offer.sold = true;
+  run.seams[offer.id] = (run.seams[offer.id] || 1) + 1;
+  run.stats.patterns = (run.stats.patterns || 0) + 1;
+  const grown = [];
+  run.tools.forEach((t, slot) => {
+    const def = TOOLS[t.id];
+    if (def.onPattern) { def.onPattern(t); grown.push(slot); }
+  });
+  return { ok: true, seam: offer.id, level: run.seams[offer.id], grown };
 }
 
 export function buy(run, i) {
@@ -439,6 +485,7 @@ export function reroll(run) {
   run.coins -= run.shop.rerollCost;
   run.shop.rerollCost += 1;
   run.shop.offers = rollOffers(run);
+  run.shop.patterns = rollPatterns(run);
   return { ok: true };
 }
 
@@ -467,6 +514,8 @@ export function migrate(s) {
   if (s.order) s.order.colors ||= {};
   s.stats = { ...emptyStats(), ...(s.stats || {}) };
   s.locked ||= [];
+  s.seams = { ...startingLevels(), ...(s.seams || {}) };
+  if (s.shop && !s.shop.patterns) s.shop.patterns = [];
   return s;
 }
 

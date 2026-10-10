@@ -58,24 +58,26 @@ test('scoring: plain placement', () => {
   assert.equal(r.score, 3);
 });
 
-test('scoring: single line, streak, mono', () => {
-  assert.equal(evaluate(baseCtx(), []).score, 50); // (40+10) × 1
-  assert.equal(evaluate(baseCtx({ streak: 3 }), []).score, 150); // ×(1+2)
-  assert.equal(evaluate(baseCtx({ monoLines: 1 }), []).score, 100);
+test('scoring: single line, streak, mono seam', () => {
+  assert.equal(evaluate(baseCtx(), []).score, 70); // 홑솔기 (30 + 8×5) × 1
+  assert.equal(evaluate(baseCtx({ streak: 3 }), []).score, 210); // ×(1+2)
+  assert.equal(evaluate(baseCtx({ monoLines: 1 }), []).score, 440); // 단색 (70+40) × 4
+  assert.equal(evaluate(baseCtx({ levels: { single: 3 } }), []).score, (30 + 20 + 40) * 3);
 });
 
 test('scoring: phases apply chips, then +mult, then ×mult regardless of slot order', () => {
   const a = evaluate(baseCtx({ lineCount: 2, colLines: 1 }), [makeTool('scissors'), makeTool('thimble'), makeTool('needlecase')]);
   const b = evaluate(baseCtx({ lineCount: 2, colLines: 1 }), [makeTool('needlecase'), makeTool('thimble'), makeTool('scissors')]);
   assert.equal(a.score, b.score);
-  // chips 40 + 20 + 50 = 110; mult 2² + 3 = 7; ×2 = 14 → 1540
-  assert.equal(a.score, 1540);
+  // 십자솔기: chips 80 + 40 + 50 = 170; mult 4 + 3 = 7; ×2 = 14 → 2380
+  assert.equal(a.seam, 'cross');
+  assert.equal(a.score, 2380);
 });
 
 test('scoring: ink boss zeroes black cells, strict halves mult', () => {
   const black = baseCtx({ cleared: Array.from({ length: 8 }, (_, c) => ({ r: 0, c, color: 'black' })), boss: 'ink' });
-  assert.equal(evaluate(black, []).score, 10);
-  assert.equal(evaluate(baseCtx({ boss: 'strict', streak: 3 }), []).score, 75);
+  assert.equal(evaluate(black, []).score, 30);
+  assert.equal(evaluate(baseCtx({ boss: 'strict', streak: 3 }), []).score, 105);
 });
 
 test('tools: every tool has a description and valid rarity/price', () => {
@@ -198,9 +200,46 @@ test('run: targets grow monotonically', () => {
   }
 });
 
-test('scoring: multi-line clears grow quadratically', () => {
-  const two = evaluate(baseCtx({ lineCount: 2, cleared: Array.from({ length: 16 }, (_, k) => ({ r: k >> 3, c: k & 7, color: 'red' })) }), []);
-  assert.equal(two.score, (80 + 20) * 4);
+test('seams: ranking picks the highest hand', async () => {
+  const { judgeSeam } = await import('../src/core/seams.js');
+  const j = (o) => judgeSeam({ lineCount: 1, rowLines: 1, colLines: 0, monoLines: 0, perfect: false, ...o });
+  assert.equal(j({}), 'single');
+  assert.equal(j({ lineCount: 2, rowLines: 2 }), 'double');
+  assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1 }), 'cross');
+  assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1 }), 'mono');
+  assert.equal(j({ lineCount: 3, rowLines: 3, monoLines: 1 }), 'triple');
+  assert.equal(j({ lineCount: 2, rowLines: 2, monoLines: 2 }), 'twinMono');
+  assert.equal(j({ perfect: true, monoLines: 1 }), 'perfect');
+  assert.equal(j({ lineCount: 0 }), null);
+  const two = evaluate(baseCtx({ lineCount: 2, rowLines: 2, cleared: Array.from({ length: 16 }, (_, k) => ({ r: k >> 3, c: k & 7, color: 'red' })) }), []);
+  assert.equal(two.score, (60 + 80) * 3);
+});
+
+test('patterns: buying raises a seam level and grows the manual', () => {
+  const run = R.newRun({ seed: 31 });
+  run.tools.push(makeTool('manual'));
+  run.phase = 'reward';
+  run.reward = { lines: [], total: 20 };
+  R.collectReward(run);
+  R.chooseGift(run, 0);
+  assert.equal(run.shop.patterns.length, R.PATTERN_OFFERS);
+  const id = run.shop.patterns[0].id;
+  const coins = run.coins;
+  const res = R.buyPattern(run, 0);
+  assert.ok(res.ok);
+  assert.equal(run.seams[id], 2);
+  assert.equal(run.coins, coins - 3);
+  assert.equal(run.tools[0].data.mult, 2);
+  assert.ok(!R.buyPattern(run, 0).ok);
+});
+
+test('bosses arrive in tiers: day 1 is an easy rule, day 4 is strict', () => {
+  for (let seed = 1; seed <= 30; seed++) {
+    const run = R.newRun({ seed });
+    assert.ok(['short', 'big'].includes(run.bosses[0]));
+    assert.equal(run.bosses[3], 'strict');
+    assert.equal(new Set(run.bosses).size, R.DAYS);
+  }
 });
 
 test('tools: silk resets at each order start', () => {
