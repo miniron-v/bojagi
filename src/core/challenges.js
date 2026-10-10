@@ -4,9 +4,9 @@
 // Pure functions over the meta record (meta.challenges = { id: { best, done, claimed } }).
 
 export const CHALLENGES = [
-  { id: 'streak5', name: '쉬지 않는 바늘', need: '한 판에서 연속 5번 지우기', key: 'bestStreak', goal: 5, skin: 'haneul' },
-  { id: 'mono6', name: '고른 땀', need: '한 판에서 한 색 줄 지우기 6번', key: 'monos', goal: 6, skin: 'bisaek' },
-  { id: 'hand1500', name: '한 땀에 천오백', need: '한 땀에 1,500점 이상', key: 'bestHand', goal: 1500, skin: 'honghwa' },
+  { id: 'streak5', name: '쉬지 않는 바늘', need: '한 판에서 연속 5번 지우기', key: 'bestStreak', goal: 5, skin: 'cheongmyeong' },
+  { id: 'mono6', name: '고른 땀', need: '한 판에서 한 색 줄 지우기 6번', key: 'monos', goal: 6, skin: 'dancheong' },
+  { id: 'hand1500', name: '한 땀에 천오백', need: '한 땀에 1,500점 이상', key: 'bestHand', goal: 1500, skin: 'jaju' },
   { id: 'day3', name: '장인의 눈', need: '한 판에서 주문 9개 마치기 (장날 3 장인 의뢰까지)', key: 'orders', goal: 9, skin: 'deungkkot' },
   { id: 'finish', name: '누비 완성', need: '한 판에서 누비 완성하기', key: 'orders', goal: 12, skin: 'hanji' },
 ];

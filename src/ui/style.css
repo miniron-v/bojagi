@@ -7,26 +7,27 @@
    logo, the score and totals). One portrait column, max 480px. */
 :root {
   /* defaults = the 쪽빛 skin; src/ui/skins.js overrides these at runtime */
-  --ground: #7d9ad6;
-  --on-ground: #16224a;
-  --on-ground-2: #1f2d5e;
-  --ground-line: #16224a66;
-  --silk: #34519a;
-  --silk-2: #3d5ba3;
-  --silk-3: #5a7cc6;
-  --deep: #263d78;
-  --deep-a: #263d78f0;
-  --deep-b: #263d78b3;
-  --veil: #121c3ab8;
-  --card-rare: #4a3f9a;
-  --card-pattern: #5a3a7a;
+  --ground: #141b33;
+  --on-ground: #f3ead6;
+  --on-ground-2: #b3b8cf;
+  --on-ground-alert: #ffaa9c;
+  --ground-line: #f3ead666;
+  --silk: #1f2a4f;
+  --silk-2: #2a3866;
+  --silk-3: #3a4b84;
+  --deep: #10162c;
+  --deep-a: #10162cf0;
+  --deep-b: #10162cb3;
+  --veil: #090d1cb8;
+  --card-rare: #2c2b55;
+  --card-pattern: #2b2342;
   --sheen: #ffffff0c;
   --linen: #ebdfc5;
   --wood: #8e5c35;
   --wood-2: #5b381d;
   --thread: #f3ead6;
-  --muted: #d6def3;
-  --dim: #adbbe0;
+  --muted: #b3b8cf;
+  --dim: #8d94b3;
   --seal: #c63d31;
   --seal-2: #8f2219;
   --gold: #e2b54a;
@@ -141,7 +142,7 @@ b, .num { font-variant-numeric: tabular-nums; }
 .day-label { font-family: var(--font-display); font-weight: 700; font-size: 22px; white-space: nowrap; }
 .day-label small { font-weight: 400; font-size: 13px; color: var(--on-ground-2); }
 .kind { font-size: 13px; color: var(--on-ground-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kind.boss { color: #6e1a12; font-weight: 700; }
+.kind.boss { color: var(--on-ground-alert); font-weight: 700; }
 .hud-buttons { display: flex; gap: 6px; }
 .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; background: var(--silk-2); border-radius: var(--cut); outline: 1.5px dashed #f3ead633; outline-offset: -5px; }
 .icon-btn svg { width: 20px; height: 20px; }

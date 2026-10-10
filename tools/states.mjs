@@ -119,7 +119,7 @@ await shot('skins');
 await page.click('[data-claim="hand1500"]');
 await page.waitForTimeout(500);
 await shot('skins-claimed');
-for (const id of ['haneul', 'bisaek', 'honghwa']) {
+for (const id of ['cheongmyeong', 'dancheong', 'jaju']) {
   await page.click(`.skin-card[data-skin="${id}"]`);
   await page.waitForTimeout(150);
   await page.click('.sheet-close');
