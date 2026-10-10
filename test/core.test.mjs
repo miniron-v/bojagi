@@ -495,7 +495,7 @@ test('patterns: only buildable seams are sold', () => {
     R.collectReward(run);
     R.chooseGift(run, 0);
     for (let k = 0; k < 4; k++) {
-      assert.ok(run.shop.patterns.every((p) => ['double', 'cross', 'mono', 'triple'].includes(p.id)));
+      assert.ok(run.shop.patterns.every((p) => ['double', 'cross', 'triple'].includes(p.id)));
       R.reroll(run);
     }
   }
@@ -571,4 +571,17 @@ test('a tool unlocked during a run only reaches the market from the next run', (
   }
   for (const id of locked) assert.ok(!seen.has(id), `${id} offered while locked for this run`);
   assert.ok(seen.size > 10, 'rerolls do show the open pool');
+});
+
+test('migrate: saves from before colour became a bonus drop the old seam ids everywhere', () => {
+  const run = R.newRun({ seed: 9 });
+  run.phase = 'reward'; run.reward = { lines: [], total: 0 };
+  run.seams.mono = 4; run.seams.twinMono = 2;
+  run.history = [{ kind: 0, ok: true, color: 'red', seam: 'twinMono', score: 500 }, { kind: 1, ok: true, color: 'blue', seam: 'double', score: 900 }];
+  run.shop = { offers: [], patterns: [{ id: 'mono', sold: false }, { id: 'cross', sold: false }], rerollCost: 2 };
+  const m = R.migrate(JSON.parse(JSON.stringify(run)));
+  assert.deepEqual(Object.keys(m.seams).sort(), ['cross', 'double', 'perfect', 'single', 'triple']);
+  assert.equal(m.history[0].seam, null);
+  assert.equal(m.history[1].seam, 'double');
+  assert.deepEqual(m.shop.patterns.map((p) => p.id), ['cross']);
 });

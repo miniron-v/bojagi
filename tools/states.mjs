@@ -102,7 +102,7 @@ await page.evaluate(() => {
   Object.assign(m, { points: 312000, clears: 210, bestPoints: 48000, bestLevel: 6, wins: 1, challengesV: 2,
     challenges: { points300k: { best: 312000, done: true, claimed: true } } });
   m.quilts = [1, 2, 3, 4, 5].map((n) => ({ at: n, win: n === 2, day: n === 2 ? 4 : 2 + (n % 2), points: 20000 * n,
-    h: Array.from({ length: n === 2 ? 12 : 4 + n }, (_, i) => ({ color: ['blue', 'red', 'yellow', 'white', 'black'][(i * n) % 5], seam: ['single', 'double', 'mono', 'cross', 'triple', 'twinMono', 'perfect'][(i + n) % 7], ok: !(n !== 2 && i === 3 + n), boss: i % 3 === 2 })) }));
+    h: Array.from({ length: n === 2 ? 12 : 4 + n }, (_, i) => ({ color: ['blue', 'red', 'yellow', 'white', 'black'][(i * n) % 5], seam: ['single', 'double', 'cross', 'triple', 'perfect'][(i + n) % 5], ok: !(n !== 2 && i === 3 + n), boss: i % 3 === 2 })) }));
   localStorage.removeItem('bojagi.run.v1');
   localStorage.setItem('bojagi.meta.v1', JSON.stringify(m));
 });

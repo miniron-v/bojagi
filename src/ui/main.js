@@ -1056,7 +1056,7 @@ function showShop() {
     const i = +n.dataset.buy;
     const id = sh.offers[i].id;
     const res = R.buy(run, i);
-    if (!res.ok) { toast(res.reason === 'full' ? '도구 칸이 가득 찼어요. 먼저 하나를 파세요' : '돈이 모자라요'); showShop(); return; }
+    if (!res.ok) { showShop(); toast(res.reason === 'full' ? '도구 칸이 가득 찼어요. 먼저 하나를 파세요' : '돈이 모자라요'); return; } // after the redraw: a new sheet clears toasts
     discover(id);
     sfx.buy();
     haptic(15);
@@ -1066,7 +1066,7 @@ function showShop() {
   }));
   on(s, '[data-pattern]', once((e, n) => {
     const res = R.buyPattern(run, +n.dataset.pattern);
-    if (!res.ok) { toast('돈이 모자라요'); showShop(); return; }
+    if (!res.ok) { showShop(); toast('돈이 모자라요'); return; }
     sfx.buy();
     haptic(15);
     persist();
@@ -1488,7 +1488,7 @@ if (hot && hot.ready) hot.ready(boot);
 else boot(hot && hot.data ? hot.data : {});
 
 // handle for automated tests
-// test hooks for tools/e2e.mjs, tools/states.mjs and tools/ui-audit.mjs
+// test hooks: run/view/R/shapes for tools/e2e.mjs and tools/states.mjs, ui for tools/ui-audit.mjs
 window.__bojagi = {
   get run() { return run; }, view, R, shapes: SHAPE_BY_ID,
   ui: { continueRun, recordRun, showEnd, showReward, showShop, showGift, showIntro, showCodex, showRecords, showSkins, showSeams, showPause, showHow, titleScreen },

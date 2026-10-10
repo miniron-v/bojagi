@@ -535,6 +535,7 @@ export function migrate(s) {
   s.seams = { ...startingLevels(), ...(s.seams || {}) };
   // 납작누비/오목누비 stopped being seams (colour became a bonus): drop their levels and stale offers
   for (const id of Object.keys(s.seams)) if (!SEAM_IDS.includes(id)) delete s.seams[id];
+  for (const h of s.history) if (h.seam && !SEAM_IDS.includes(h.seam)) h.seam = null;
   s.stats.topLevel = Math.max(s.stats.topLevel || 1, ...Object.values(s.seams));
   if (s.shop && !s.shop.patterns) s.shop.patterns = [];
   if (s.shop) s.shop.patterns = s.shop.patterns.filter((p) => PATTERN_SEAMS.includes(p.id));
