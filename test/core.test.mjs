@@ -62,7 +62,8 @@ test('scoring: single line, streak, mono seam', () => {
   assert.equal(evaluate(baseCtx(), []).score, 70); // 홑솔기 (30 + 8×5) × 1
   assert.equal(evaluate(baseCtx({ streak: 3 }), []).score, 210); // ×(1+2)
   assert.equal(evaluate(baseCtx({ monoLines: 1 }), []).score, 440); // 단색 (70+40) × 4
-  assert.equal(evaluate(baseCtx({ levels: { single: 3 } }), []).score, (30 + 20 + 40) * 3);
+  // 홑솔기 never levels; a leveled 겹솔기 outscores it
+  assert.equal(evaluate(baseCtx({ levels: { single: 3 } }), []).score, 70);
 });
 
 test('scoring: phases apply chips, then +mult, then ×mult regardless of slot order', () => {
@@ -206,7 +207,12 @@ test('seams: ranking picks the highest hand', async () => {
   assert.equal(j({}), 'single');
   assert.equal(j({ lineCount: 2, rowLines: 2 }), 'double');
   assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1 }), 'cross');
-  assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1 }), 'mono');
+  // both cross (80×4) and mono (70×4) apply: the more valuable one is scored
+  assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1 }), 'cross');
+  assert.equal(judgeSeam({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1, perfect: false }, { mono: 3 }), 'mono');
+  // a leveled 겹솔기 is not overridden by an incidental single-color line
+  assert.equal(judgeSeam({ lineCount: 2, rowLines: 2, colLines: 0, monoLines: 1, perfect: false }, { double: 5 }), 'double');
+  assert.equal(j({ lineCount: 1, rowLines: 1, monoLines: 1 }), 'mono');
   assert.equal(j({ lineCount: 3, rowLines: 3, monoLines: 1 }), 'triple');
   assert.equal(j({ lineCount: 2, rowLines: 2, monoLines: 2 }), 'twinMono');
   assert.equal(j({ perfect: true, monoLines: 1 }), 'perfect');
@@ -233,11 +239,11 @@ test('patterns: buying raises a seam level and grows the manual', () => {
   assert.ok(!R.buyPattern(run, 0).ok);
 });
 
-test('bosses arrive in tiers: day 1 is an easy rule, day 4 is strict', () => {
+test('bosses arrive in tiers: day 1 is an easy rule, day 4 is a hard one', () => {
   for (let seed = 1; seed <= 30; seed++) {
     const run = R.newRun({ seed });
     assert.ok(['short', 'big'].includes(run.bosses[0]));
-    assert.equal(run.bosses[3], 'strict');
+    assert.ok(['strict', 'busy'].includes(run.bosses[3]));
     assert.equal(new Set(run.bosses).size, R.DAYS);
   }
 });
@@ -453,4 +459,18 @@ test('records: idempotent counters, daily streak, unlock reporting', async () =>
   assert.equal(meta.dailyStreak.count, 2);
   assert.ok(dailyStreakAlive(meta, '2026-10-12'));
   assert.ok(!dailyStreakAlive(meta, '2026-10-14'));
+});
+
+test('patterns: only buildable seams are sold', () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    const run = R.newRun({ seed });
+    run.phase = 'reward';
+    run.reward = { lines: [], total: 30 };
+    R.collectReward(run);
+    R.chooseGift(run, 0);
+    for (let k = 0; k < 4; k++) {
+      assert.ok(run.shop.patterns.every((p) => ['double', 'cross', 'mono', 'triple'].includes(p.id)));
+      R.reroll(run);
+    }
+  }
 });

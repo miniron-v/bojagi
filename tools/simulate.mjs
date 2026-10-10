@@ -6,6 +6,8 @@ import { SHAPE_BY_ID } from '../src/core/shapes.js';
 import { N, idx, paint, fullLines, clearLines, canPlace } from '../src/core/board.js';
 import { TOOLS, MAX_TOOLS } from '../src/core/tools.js';
 import { lockedIds } from '../src/core/unlocks.js';
+import { PATTERN_SEAMS, judgeSeam, seamValue } from '../src/core/seams.js';
+import { filledCount } from '../src/core/board.js';
 
 const RUNS = +process.argv[2] || 300;
 const BOT = process.argv[3] || 'smart';
@@ -39,7 +41,44 @@ function boardQuality(board) {
   return empty * 2 - holes * 12 + nearly * 3;
 }
 
+// planner: beam search over the rest of the tray, valuing clears at the run's seam levels
+function plannerMove(run) {
+  const BEAM = 20;
+  const avail = run.tray.map((p, i) => (p ? i : -1)).filter((i) => i >= 0);
+  let beam = [{ board: run.board, used: [], first: null, val: 0 }];
+  let best = null;
+  for (let depth = 0; depth < avail.length; depth++) {
+    const nb = [];
+    for (const st of beam) for (const i of avail) {
+      if (st.used.includes(i)) continue;
+      const p = run.tray[i];
+      const sh = SHAPE_BY_ID[p.shape];
+      for (let r = 0; r <= N - sh.h; r++) for (let c = 0; c <= N - sh.w; c++) {
+        if (!canPlace(st.board, sh, r, c)) continue;
+        const pb = paint(st.board, sh, r, c, p.color);
+        const L = fullLines(pb);
+        const after = clearLines(pb, L).board;
+        let g = 0;
+        if (L.length) {
+          const ctx = { lineCount: L.length, rowLines: L.filter((l) => l.type === 'row').length, colLines: L.filter((l) => l.type === 'col').length, monoLines: L.filter((l) => l.mono).length, perfect: filledCount(after) === 0 };
+          const sm = judgeSeam(ctx, run.seams);
+          const v = seamValue(sm, run.seams[sm] || 1);
+          g = (v.chips + L.length * 40) * v.mult;
+        }
+        nb.push({ board: after, used: [...st.used, i], first: st.first || { i, r, c }, val: st.val + g });
+      }
+    }
+    if (!nb.length) break;
+    for (const x of nb) x.score = x.val + boardQuality(x.board) * 4;
+    nb.sort((a, b) => b.score - a.score);
+    beam = nb.slice(0, BEAM);
+    best = beam[0];
+  }
+  return best ? best.first : null;
+}
+
 function chooseMove(run) {
+  if (BOT === 'planner') return plannerMove(run);
   let best = null;
   run.tray.forEach((p, i) => {
     if (!p) return;
@@ -82,9 +121,12 @@ function shopBot(run) {
     }
     // the planner commits: it levels the seam it has made most often
     if (SHOP === 'value') {
-      const counts = run.stats.seamCounts || {};
-      const fav = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || 'single';
-      const pi = (run.shop.patterns || []).findIndex((p) => !p.sold && (p.id === fav || counts[p.id] >= (counts[fav] || 0) * 0.5));
+      // pick a seam to build around once (the buildable seam made most so far), then keep feeding it
+      if (!run._commit) {
+        const counts = run.stats.seamCounts || {};
+        run._commit = PATTERN_SEAMS.slice().sort((a, b) => (counts[b] || 0) - (counts[a] || 0))[0];
+      }
+      const pi = (run.shop.patterns || []).findIndex((p) => !p.sold && p.id === run._commit);
       if (pi >= 0 && R.buyPattern(run, pi).ok) continue;
     }
     if (SHOP === 'value' && run.coins >= run.shop.rerollCost + 8 && run.tools.some((t) => val(t.id) < 7)) { R.reroll(run); continue; }
@@ -134,5 +176,4 @@ for (let d = 1; d <= R.DAYS; d++) for (let o = 0; o < 3; o++) {
   const med = arr.length ? arr[Math.floor(arr.length / 2)].toFixed(2) : '-';
   console.log(`day ${d} ${['small', 'big ', 'boss'][o]} target ${String(R.targetFor(d, o)).padStart(6)} reach ${pct(reach[key] || 0)}  median score/target ${med}`);
 }
-const seamTotals = {};
 console.log('ends:', Object.entries(ends).sort().map(([k, v]) => `${k}=${v}`).join('  '));

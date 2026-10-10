@@ -11,27 +11,50 @@ export const SEAMS = [
   { id: 'mono', name: '단색 솔기', chips: 70, mult: 4, lvChips: 25, lvMult: 2, how: '한 색으로만 채운 줄 하나 포함' },
   { id: 'cross', name: '십자솔기', chips: 80, mult: 4, lvChips: 25, lvMult: 2, how: '가로와 세로를 함께' },
   { id: 'double', name: '겹솔기', chips: 60, mult: 3, lvChips: 20, lvMult: 2, how: '같은 방향 두 줄을 한 번에' },
-  { id: 'single', name: '홑솔기', chips: 30, mult: 1, lvChips: 10, lvMult: 1, how: '한 줄' },
+  // the fallback hand: it never levels, so a run has to grow by committing to a bigger seam
+  { id: 'single', name: '홑솔기', chips: 30, mult: 1, lvChips: 0, lvMult: 0, how: '한 줄', fixed: true },
 ];
 
 export const SEAM_BY_ID = Object.fromEntries(SEAMS.map((s) => [s.id, s]));
 export const SEAM_IDS = SEAMS.map((s) => s.id);
 export const PATTERN_PRICE = 3;
+// seams the market sells patterns for: long shots and the fallback hand are left out
+export const PATTERN_SEAMS = ['double', 'cross', 'mono', 'triple'];
 
 export function startingLevels() {
   return Object.fromEntries(SEAM_IDS.map((id) => [id, 1]));
 }
 
-/** Which seam a clear makes. ctx needs lineCount, rowLines, colLines, monoLines, perfect. */
-export function judgeSeam(ctx) {
-  if (!ctx.lineCount) return null;
-  if (ctx.perfect) return 'perfect';
-  if (ctx.monoLines >= 2) return 'twinMono';
-  if (ctx.lineCount >= 3) return 'triple';
-  if (ctx.monoLines >= 1) return 'mono';
-  if (ctx.rowLines && ctx.colLines) return 'cross';
-  if (ctx.lineCount === 2) return 'double';
-  return 'single';
+/** Every seam a clear satisfies, in rank order. ctx needs lineCount, rowLines, colLines, monoLines, perfect. */
+export function matchingSeams(ctx) {
+  if (!ctx.lineCount) return [];
+  const out = [];
+  if (ctx.perfect) out.push('perfect');
+  if (ctx.monoLines >= 2) out.push('twinMono');
+  if (ctx.lineCount >= 3) out.push('triple');
+  if (ctx.monoLines >= 1) out.push('mono');
+  if (ctx.rowLines && ctx.colLines) out.push('cross');
+  if (ctx.lineCount >= 2 && (ctx.rowLines >= 2 || ctx.colLines >= 2)) out.push('double');
+  out.push('single');
+  return out;
+}
+
+/**
+ * Which seam a clear is scored as: the satisfied seam worth most at the current levels
+ * (chips × mult), ties going to the higher rank. A leveled seam is never overridden by a
+ * higher-ranked but weaker one.
+ */
+export function judgeSeam(ctx, levels = null) {
+  const all = matchingSeams(ctx);
+  if (!all.length) return null;
+  let best = all[0];
+  let bestV = -1;
+  for (const id of all) {
+    const v = seamValue(id, (levels && levels[id]) || 1);
+    const val = v.chips * v.mult;
+    if (val > bestV) { best = id; bestV = val; }
+  }
+  return best;
 }
 
 export function seamValue(id, level = 1) {

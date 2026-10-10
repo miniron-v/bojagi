@@ -259,7 +259,8 @@ function signatureSeam() {
   }
   return best;
 }
-const seamLabel = (id) => `${SEAM_BY_ID[id].name} Lv.${seamLevel(id)}`;
+const lvTag = (id) => (SEAM_BY_ID[id].fixed ? '' : `Lv.${seamLevel(id)}`);
+const seamLabel = (id) => `${SEAM_BY_ID[id].name} ${lvTag(id)}`.trim();
 
 // ---------- modal ----------
 function syncInput() {
@@ -478,6 +479,8 @@ function begin() {
   patchWarned = false;
   if (!meta.tutorial && run.day === 1 && run.orderIdx === 0) { hintStage = 1; hint(`조각을 끌어 수틀에 놓으세요. 조각은 ${run.order.patchesLeft}개뿐이에요`); }
   else if (run.order.boss === 'knots' && teachOnce('knots', '매듭이 든 줄도 나머지를 채우면 매듭째 풀려요', 4200)) { /* taught */ }
+  else if (run.order.boss === 'ink' && teachOnce('ink', '먹물: 흑색 칸은 지워도 칩을 주지 않아요. 다른 색 줄을 노리세요', 4200)) { /* taught */ }
+  else if (run.order.boss === 'strict' && teachOnce('strict', '깐깐한 눈: 모든 배수가 절반이에요. 목표가 그만큼 낮아요', 4200)) { /* taught */ }
   else if (pendingHint) { hint(pendingHint, 3200); pendingHint = null; }
   if (ev.some((e) => e.type === 'stuck')) stuckHint();
   if (ev.some((e) => e.type === 'fail')) {
@@ -494,7 +497,11 @@ function stuckHint() {
 
 // ---------- play ----------
 view.handlers.canDrag = () => !busy && !!run && run.phase === 'play' && el.modal.hidden;
-view.handlers.pickup = () => { unlock(); sfx.pick(); haptic(6); closeTip(); lastHoverKey = null; };
+view.handlers.pickup = () => {
+  unlock(); sfx.pick(); haptic(6); closeTip(); lastHoverKey = null;
+  // picking up the next patch finishes the running tally so the preview can take its place
+  if (tallyJob) tallyJob.flush();
+};
 view.handlers.cancel = (i, wasValid) => { if (!wasValid) sfx.invalid(); showPreview(null); };
 view.handlers.hover = (h) => showPreview(h);
 view.handlers.drop = (i, r, c, piece) => {
@@ -539,7 +546,7 @@ function showPreview(h) {
 }
 
 function tallyHtml(seam, chips, mult, label, win = false) {
-  const head = seam ? `<div class="seam">${SEAM_BY_ID[seam].name}<small>Lv.${seamLevel(seam)}</small></div>` : '';
+  const head = seam ? `<div class="seam">${SEAM_BY_ID[seam].name}<small>${lvTag(seam)}</small></div>` : '';
   return `${head}<div class="row"><span class="chips"><small>칩</small><em>${chips}</em></span><span class="x">×</span><span class="mult"><small>배수</small><em>${mult}</em></span></div><div class="label${win ? ' win' : ''}">${label}</div>`;
 }
 
@@ -746,7 +753,7 @@ function startTally(ev) {
     const ar = app.getBoundingClientRect();
     view.flyTo(tr.left - ar.left + tr.width / 2, tr.bottom - ar.top - 16, sr.left - ar.left + 30, sr.top - ar.top + 14, '#e2b54a', Math.min(14, 4 + lines.length * 3));
     if (teach) { meta.tallyTaught = true; meta.tutorial = true; store.saveMeta(meta); }
-    if (!job.flushed) await sleep(420);
+    if (!job.flushed) await sleep(260);
     pendingScore = Math.max(0, pendingScore - result.score);
     if (run && run.order) setBar();
     bump(el.score);
@@ -850,13 +857,13 @@ function showSeams(back) {
   const counts = (run && run.stats.seamCounts) || {};
   const sig = run ? signatureSeam() : null;
   const html = `<h2>솔기 족보</h2>
-    <p class="lead">지울 때마다 가장 높은 족보 하나로 점수를 매겨요. 바느질 본으로 레벨을 올린 족보를 노려 보세요.</p>
+    <p class="lead">지울 때마다 해당하는 족보 중 가장 비싼 하나로 점수를 매겨요. 홑솔기는 자라지 않으니, 본으로 다른 족보를 키워 노려 보세요.</p>
     <div class="seam-table">${SEAMS.map((sm) => {
       const lv = seamLevel(sm.id);
       const v = seamValue(sm.id, lv);
-      return `<div class="seam-row${sm.id === sig && lv > 1 ? ' hot' : ''}"><span class="ic">${seamIcon(sm.id)}</span><span class="nm">${sm.name}<small>Lv.${lv}</small></span>
+      return `<div class="seam-row${sm.id === sig && lv > 1 ? ' hot' : ''}"><span class="ic">${seamIcon(sm.id)}</span><span class="nm">${sm.name}<small>${sm.fixed ? '레벨 없음' : `Lv.${lv}`}</small></span>
         <span class="val"><span class="c">${v.chips}</span> × <span class="m">${v.mult}</span></span>
-        <span class="how">${sm.how}${run ? ` · 이번 판 ${counts[sm.id] || 0}번` : ''}</span></div>`;
+        <span class="how">${sm.how}${run ? ` <span>(이번 판 ${counts[sm.id] || 0}번)</span>` : ''}</span></div>`;
     }).join('')}</div>
     <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>닫기</button></div>`;
   const s = openModal(html);

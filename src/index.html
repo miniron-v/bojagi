@@ -35,6 +35,7 @@
     </header>
     <section class="order" aria-label="주문 진행">
       <div class="score-row"><span class="score" id="hud-score" aria-live="polite">0</span><span class="target">목표 <b id="hud-target">0</b></span></div>
+      <div class="tally" id="tally" aria-hidden="true"></div>
       <div class="bar" id="hud-bar"><div class="ghost" id="hud-ghost"></div><div class="fill" id="hud-fill"></div></div>
       <div class="stats">
         <div class="stat coins"><span id="ic-coin"></span><b id="hud-coins">0</b></div>
@@ -46,7 +47,6 @@
     <div class="tools" id="hud-tools" aria-label="바느질 도구"></div>
     <div class="stage" id="stage">
       <canvas id="cv" aria-label="수틀과 조각"></canvas>
-      <div class="tally" id="tally" aria-hidden="true"></div>
       <div class="hint" id="hint" role="status"></div>
     </div>
     <footer class="hud-bottom">

@@ -5,7 +5,7 @@ import { SHAPES, SHAPE_BY_ID, COLORS } from './shapes.js';
 import { N, emptyBoard, canPlace, fitsAnywhere, paint, fullLines, clearLines, filledCount } from './board.js';
 import { TOOLS, TOOL_IDS, MAX_TOOLS, makeTool, sellPrice } from './tools.js';
 import { evaluate } from './scoring.js';
-import { SEAM_IDS, PATTERN_PRICE, startingLevels, judgeSeam } from './seams.js';
+import { SEAM_IDS, PATTERN_SEAMS, PATTERN_PRICE, startingLevels, judgeSeam } from './seams.js';
 
 export const SAVE_VERSION = 1;
 export const DAYS = 4;
@@ -34,20 +34,20 @@ export const ORDER_KINDS = [
 
 // Target for the small order of each day; big/boss multiply by ORDER_KINDS.scale.
 // Calibrated by tools/simulate.mjs.
-export const DAY_BASE = [400, 1700, 4800, 12500];
+export const DAY_BASE = [450, 2500, 5800, 12000];
 export const ENDLESS_GROWTH = 1.9; // must exceed the boss scale so targets keep rising
 
 export const BOSSES = {
   knots: { scale: 1.75, name: '매듭', desc: `매듭 ${KNOTS}개가 칸을 막고 시작. 매듭이 든 줄을 채우면 함께 풀려요` },
   ink: { scale: 1.6, name: '먹물', desc: '흑색 칸은 지워도 칩이 0' },
   busy: { scale: 1.5, name: '바쁜 손', desc: '조각 바꾸기를 쓸 수 없음' },
-  short: { scale: 1.5, name: '짧은 실', desc: `조각이 ${SHORT_PENALTY}개 적음` },
-  big: { scale: 1.75, name: '큰 천', desc: `${BIG_MIN_SIZE}칸 이상 조각만, 조각 ${BIG_PENALTY}개 적음` },
-  strict: { scale: 1.2, name: '깐깐한 눈', desc: '모든 점수의 배수가 절반' },
+  short: { scale: 1.9, name: '짧은 실', desc: `조각이 ${SHORT_PENALTY}개 적음` },
+  big: { scale: 2.0, name: '큰 천', desc: `${BIG_MIN_SIZE}칸 이상 조각만, 조각 ${BIG_PENALTY}개 적음` },
+  strict: { scale: 1.1, name: '깐깐한 눈', desc: '모든 점수의 배수가 절반' },
 };
 export const BOSS_IDS = Object.keys(BOSSES);
 // Boss rules arrive easiest first: one day introduces one new kind of pressure.
-export const BOSS_TIERS = [['short', 'big'], ['knots', 'ink'], ['busy', 'knots', 'ink'], ['strict']];
+export const BOSS_TIERS = [['short', 'big'], ['knots', 'ink'], ['busy', 'knots', 'ink'], ['strict', 'busy']];
 
 /** Order target. Boss orders scale by their rule: harsher rules ask for less. */
 export function targetFor(day, orderIdx, boss = null) {
@@ -278,7 +278,7 @@ function scorePlacement(run, painted, lines, shape, dry) {
     discardsLeft: o.discardsLeft,
     boss: o.boss,
   };
-  ctx.seam = judgeSeam(ctx);
+  ctx.seam = judgeSeam(ctx, run.seams);
   // Tool state must not leak from previews: use copies when dry.
   let tools = run.tools;
   if (dry) {
@@ -425,11 +425,9 @@ function rollOffers(run) {
 }
 
 function rollPatterns(run) {
-  // perfect-clear patterns are rarer: that seam is a long shot to build around
-  const pool = SEAM_IDS.slice();
   const out = [];
   for (let k = 0; k < PATTERN_OFFERS; k++) {
-    const id = weighted(run.rng, pool.filter((x) => !out.some((o) => o.id === x)), (x) => (x === 'perfect' ? 0.4 : 1));
+    const id = pick(run.rng, PATTERN_SEAMS.filter((x) => !out.some((o) => o.id === x)));
     out.push({ id, sold: false });
   }
   return out;
@@ -532,6 +530,8 @@ export function isValidSave(s) {
     if (s.phase === 'reward' && !(s.reward && Array.isArray(s.reward.lines))) return false;
     if (s.phase === 'gift' && !(Array.isArray(s.gift) && s.gift.every((id) => TOOLS[id]))) return false;
     if (s.phase === 'shop' && !(s.shop && Array.isArray(s.shop.offers) && s.shop.offers.every((o) => TOOLS[o.id]))) return false;
+    if (s.shop && s.shop.patterns && !s.shop.patterns.every((o) => SEAM_IDS.includes(o.id))) return false;
+    if (s.seams && !Object.keys(s.seams).every((k) => SEAM_IDS.includes(k))) return false;
     return true;
   } catch {
     return false;
