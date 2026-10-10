@@ -56,7 +56,7 @@ export function createTitleArt(cv) {
     });
     const sk = Math.max(0, Math.min(1, (t - rects.length * 0.07 - 0.2) / 0.8));
     if (sk > 0) {
-      g.strokeStyle = 'rgba(244,234,211,.85)';
+      g.strokeStyle = (getComputedStyle(document.documentElement).getPropertyValue('--on-ground').trim() || '#16224a') + '99';
       g.lineWidth = Math.max(1.5, u * 0.05);
       g.setLineDash([u * 0.12, u * 0.09]);
       const L = u * 6 + 6;

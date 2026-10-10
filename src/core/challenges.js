@@ -5,10 +5,10 @@
 
 export const CHALLENGES = [
   { id: 'streak5', name: '쉬지 않는 바늘', need: '한 판에서 연속 5번 지우기', key: 'bestStreak', goal: 5, skin: 'haneul' },
-  { id: 'mono6', name: '고른 땀', need: '한 판에서 납작누비 6번', key: 'monos', goal: 6, skin: 'bisaek' },
-  { id: 'hand1500', name: '한 땀에 천오백', need: '한 번 놓아 1,500점 넘기기', key: 'bestHand', goal: 1500, skin: 'honghwa' },
-  { id: 'day3', name: '장인의 눈', need: '한 판에서 장날 3 장인 의뢰까지 마치기', key: 'orders', goal: 9, skin: 'deungkkot' },
-  { id: 'finish', name: '누비 완성', need: '장날 4까지 모든 주문 마치기', key: 'orders', goal: 12, skin: 'hanji' },
+  { id: 'mono6', name: '고른 땀', need: '한 판에서 한 색 줄 지우기 6번', key: 'monos', goal: 6, skin: 'bisaek' },
+  { id: 'hand1500', name: '한 땀에 천오백', need: '한 땀에 1,500점 이상', key: 'bestHand', goal: 1500, skin: 'honghwa' },
+  { id: 'day3', name: '장인의 눈', need: '한 판에서 주문 9개 마치기 (장날 3 장인 의뢰까지)', key: 'orders', goal: 9, skin: 'deungkkot' },
+  { id: 'finish', name: '누비 완성', need: '한 판에서 누비 완성하기', key: 'orders', goal: 12, skin: 'hanji' },
 ];
 export const CHALLENGE_BY_ID = Object.fromEntries(CHALLENGES.map((c) => [c.id, c]));
 

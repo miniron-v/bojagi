@@ -512,7 +512,7 @@ export class View {
         if (rt >= 1) this.returning = null;
       }
       const fit = this.trayFit[i];
-      this.drawShape(g, shape, p.color, cx, cy, cell * s, fit ? 1 : 0.32);
+      this.drawShape(g, shape, p.color, cx, cy, cell * s, fit ? 1 : 0.45);
     }
 
     // dragged piece on top
