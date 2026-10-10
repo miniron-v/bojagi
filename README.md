@@ -11,6 +11,8 @@ Block Blast의 손맛에 Balatro의 **칩 × 배수** 점수 엔진을 얹어 �
 
 ## 플레이
 
+**바로 플레이: https://miniron-v.github.io/bojagi/** (main에 푸시하면 자동 배포)
+
 `dist/index.html` 하나로 동작합니다(코드·그림·소리 모두 포함, 글꼴만 Google Fonts에서 받고 없으면 기본 글꼴로 대체).
 브라우저로 열거나 아무 정적 호스팅(GitHub Pages 등)에 올리면 됩니다.
 
