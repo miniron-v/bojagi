@@ -96,6 +96,29 @@ await shot('codex');
 await page.click('.sheet-close');
 await page.waitForTimeout(300);
 await shot('after-close');
+// skins: picker, then the title and a board in an earned skin
+await page.evaluate(() => { const m = JSON.parse(localStorage.getItem('bojagi.meta.v1')); m.bestDay = 3; m.wins = 1; localStorage.removeItem('bojagi.run.v1'); localStorage.setItem('bojagi.meta.v1', JSON.stringify(m)); });
+await page.goto(url);
+await page.waitForTimeout(400);
+await page.click('#btn-skin');
+await page.waitForTimeout(300);
+await shot('skins');
+for (const id of ['honghwa', 'bisaek', 'meok']) {
+  await page.click(`.skin-card[data-skin="${id}"]`);
+  await page.waitForTimeout(150);
+  await page.click('.sheet-close');
+  await page.waitForTimeout(250);
+  await shot(`title-${id}`);
+  await page.click('#btn-new');
+  await page.waitForTimeout(900);
+  await shot(`board-${id}`);
+  await page.goto(url);
+  await page.evaluate(() => localStorage.removeItem('bojagi.run.v1'));
+  await page.reload();
+  await page.waitForTimeout(400);
+  await page.click('#btn-skin');
+  await page.waitForTimeout(200);
+}
 console.log(JSON.stringify({ errors }));
 await browser.close();
 

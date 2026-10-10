@@ -105,7 +105,9 @@ export function paintPatch(g, color, w, h) {
 export function clearSpriteCache() { sprites.clear(); }
 
 /** Wooden hoop frame + linen field. Drawn in CSS pixel units (ctx already scaled). */
-export function drawHoop(g, x, y, size, cell, t) {
+const PINE = { shadow: '#5b381d', hi: '#a26a3d', mid: '#8e5c35', lo: '#6e4425', grain: '#2a1608', field: '#e9dcc0' };
+
+export function drawHoop(g, x, y, size, cell, t, wood = PINE) {
   const pad = cell * 0.32;
   // shadow
   g.save();
@@ -113,21 +115,21 @@ export function drawHoop(g, x, y, size, cell, t) {
   g.shadowBlur = cell * 0.7;
   g.shadowOffsetY = cell * 0.18;
   rr(g, x - pad, y - pad, size + pad * 2, size + pad * 2, cell * 0.45);
-  g.fillStyle = '#5b381d';
+  g.fillStyle = wood.shadow;
   g.fill();
   g.restore();
   // wood with grain
   const wg = g.createLinearGradient(x - pad, y - pad, x + size + pad, y + size + pad);
-  wg.addColorStop(0, '#a26a3d');
-  wg.addColorStop(0.5, '#8e5c35');
-  wg.addColorStop(1, '#6e4425');
+  wg.addColorStop(0, wood.hi);
+  wg.addColorStop(0.5, wood.mid);
+  wg.addColorStop(1, wood.lo);
   rr(g, x - pad, y - pad, size + pad * 2, size + pad * 2, cell * 0.45);
   g.fillStyle = wg;
   g.fill();
   g.save();
   g.clip();
   g.globalAlpha = 0.12;
-  g.strokeStyle = '#2a1608';
+  g.strokeStyle = wood.grain;
   g.lineWidth = 1;
   for (let i = 0; i < 14; i++) {
     const yy = y - pad + ((i * 37) % (size + pad * 2));
@@ -140,13 +142,13 @@ export function drawHoop(g, x, y, size, cell, t) {
   // linen field
   const inner = cell * 0.06;
   rr(g, x - inner, y - inner, size + inner * 2, size + inner * 2, cell * 0.22);
-  g.fillStyle = '#e9dcc0';
+  g.fillStyle = wood.field;
   g.fill();
   // linen weave
   g.save();
   g.clip();
   g.globalAlpha = 0.06;
-  g.fillStyle = '#5b381d';
+  g.fillStyle = wood.shadow;
   for (let i = 0; i < size; i += 3) g.fillRect(x + i, y, 1, size);
   for (let i = 0; i < size; i += 3) g.fillRect(x, y + i, size, 1);
   g.restore();
@@ -159,7 +161,7 @@ export function drawHoop(g, x, y, size, cell, t) {
   }
   g.restore();
   // brass clamp at top
-  g.fillStyle = '#5b381d';
+  g.fillStyle = wood.shadow;
   rr(g, x + size / 2 - cell * 0.5, y - pad - cell * 0.18, cell, cell * 0.3, cell * 0.08);
   g.fill();
   g.fillStyle = '#e7b33a';
@@ -170,12 +172,12 @@ export function drawHoop(g, x, y, size, cell, t) {
 }
 
 /** Tileable indigo cloth texture returned as a data URL for the CSS background. */
-export function clothTexture() {
+export function clothTexture(base = '#1b2542') {
   const c = document.createElement('canvas');
   const n = 128;
   c.width = c.height = n;
   const g = c.getContext('2d');
-  g.fillStyle = '#1b2542';
+  g.fillStyle = base;
   g.fillRect(0, 0, n, n);
   // seeded LCG so the texture is stable
   let s = 7;

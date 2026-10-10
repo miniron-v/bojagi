@@ -474,3 +474,16 @@ test('patterns: only buildable seams are sold', () => {
     }
   }
 });
+
+test('skins: locked choices fall back to the default; every skin defines its colours', async () => {
+  const { SKINS, resolveSkin, skinUnlocked, DEFAULT_SKIN } = await import('../src/ui/skins.js');
+  const fresh = { bestDay: 0, wins: 0, perfects: 0 };
+  assert.equal(resolveSkin('honghwa', fresh).id, DEFAULT_SKIN);
+  assert.equal(resolveSkin('nope', fresh).id, DEFAULT_SKIN);
+  assert.equal(resolveSkin('meok', fresh).id, 'meok');
+  assert.equal(resolveSkin('honghwa', { ...fresh, bestDay: 3 }).id, 'honghwa');
+  assert.ok(skinUnlocked(SKINS.find((k) => k.id === 'bisaek'), { wins: 1 }));
+  for (const k of SKINS) for (const f of ['ground', 'silk', 'silk2', 'silk3', 'deep', 'veil', 'rare', 'pattern', 'cloth', 'muted', 'dim']) {
+    assert.match(k[f], /^#[0-9a-f]{6}$/, `${k.id}.${f}`);
+  }
+});

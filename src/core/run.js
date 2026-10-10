@@ -39,7 +39,7 @@ export const ENDLESS_GROWTH = 1.9; // must exceed the boss scale so targets keep
 
 export const BOSSES = {
   knots: { scale: 1.75, name: '매듭', desc: `매듭 ${KNOTS}개가 칸을 막고 시작. 매듭이 든 줄을 채우면 함께 풀려요` },
-  ink: { scale: 1.6, name: '먹물', desc: '흑색 칸은 지워도 칩이 0' },
+  ink: { scale: 1.6, name: '먹물', desc: '흑색 칸은 지워도 엽전이 0' },
   busy: { scale: 1.5, name: '바쁜 손', desc: '조각 바꾸기를 쓸 수 없음' },
   short: { scale: 1.9, name: '짧은 실', desc: `조각이 ${SHORT_PENALTY}개 적음` },
   big: { scale: 2.0, name: '큰 천', desc: `${BIG_MIN_SIZE}칸 이상 조각만, 조각 ${BIG_PENALTY}개 적음` },
@@ -379,7 +379,7 @@ function winOrder(run) {
   const left = Math.min(LEFTOVER_CAP, o.patchesLeft);
   if (left > 0) lines.push({ label: `남은 조각 ${o.patchesLeft}개`, coins: left, kind: 'leftover' });
   const interest = Math.min(INTEREST_CAP, Math.floor(run.coins / INTEREST_PER));
-  if (interest > 0) lines.push({ label: `이자 (${INTEREST_PER}닢마다 1)`, coins: interest, kind: 'interest' });
+  if (interest > 0) lines.push({ label: `이자 (${INTEREST_PER}냥마다 1냥)`, coins: interest, kind: 'interest' });
   run.tools.forEach((t) => {
     const def = TOOLS[t.id];
     if (def.reward) lines.push({ label: def.name, coins: def.reward(run, t) });

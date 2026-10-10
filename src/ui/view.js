@@ -34,6 +34,8 @@ export class View {
     this.enabled = false;
     this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.speed = 1;
+    this.labelBg = '#1f2a4f'; // replaced by setSkin()
+    this.wood = undefined;
     this.handlers = { canDrag: () => true, drop: () => false, hover: () => {}, pickup: () => {}, cancel: () => {} };
     this.boss = null;
     this.hoopCache = null;
@@ -324,6 +326,13 @@ export class View {
     this.renderFx(now);
   }
 
+  /** Colours that follow the workroom skin: silk labels and the hoop's wood. */
+  setSkin(skin) {
+    this.labelBg = skin.silk;
+    this.wood = skin.wood;
+    this.hoopCache = null;
+  }
+
   hoop() {
     if (this.hoopCache) return this.hoopCache;
     const c = document.createElement('canvas');
@@ -331,7 +340,7 @@ export class View {
     c.height = this.cv.height;
     const g = c.getContext('2d');
     g.scale(this.dpr, this.dpr);
-    drawHoop(g, this.bx, this.by, this.size, this.cell, 0);
+    drawHoop(g, this.bx, this.by, this.size, this.cell, 0, this.wood);
     this.hoopCache = c;
     return c;
   }
@@ -598,7 +607,7 @@ export class View {
       g.shadowBlur = big * 0.5;
       g.shadowOffsetY = big * 0.15;
       roundRect(g, -bw / 2, -bh / 2, bw, bh, 4);
-      g.fillStyle = '#1f2a4f';
+      g.fillStyle = this.labelBg;
       g.fill();
       g.shadowColor = 'transparent';
       const inset = tx.compact ? 2.5 : 4;

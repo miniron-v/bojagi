@@ -6,6 +6,7 @@ import { SHAPE_BY_ID } from '../core/shapes.js';
 import { View } from './view.js';
 import { toolArt, glyph, seamIcon } from './icons.js';
 import { clothTexture } from './art.js';
+import { SKINS, SKIN_BY_ID, skinUnlocked, skinProgress, resolveSkin, applySkinVars } from './skins.js';
 import { sfx, unlock, setEnabled, resumeAudio, setAmbient } from './audio.js';
 import { createTitleArt } from './title-art.js';
 import { drawQuilt, shareText } from './quilt.js';
@@ -44,7 +45,6 @@ const speed = () => (settings.fast ? 0.55 : 1);
 
 setEnabled(settings.sound);
 setAmbient(settings.sound && settings.ambient !== false);
-app.style.setProperty('--cloth', `url(${clothTexture()})`);
 el.pause.innerHTML = glyph.pause;
 el.seamBtn.innerHTML = glyph.scroll;
 $('#ic-coin').innerHTML = glyph.coin;
@@ -53,6 +53,28 @@ $('#ic-reroll').innerHTML = glyph.reroll;
 
 const view = new View({ stage: $('#stage'), canvas: $('#cv'), fxCanvas: $('#fx'), app });
 view.speed = speed();
+
+// ---------- workroom skin ----------
+const themeMeta = document.querySelector('meta[name="theme-color"]');
+const clothCache = {};
+function applySkin() {
+  const skin = resolveSkin(settings.skin, meta);
+  applySkinVars(document.documentElement, skin);
+  clothCache[skin.id] ||= `url(${clothTexture(skin.cloth)})`;
+  app.style.setProperty('--cloth', clothCache[skin.id]);
+  if (themeMeta) themeMeta.setAttribute('content', skin.ground);
+  view.setSkin(skin);
+  return skin;
+}
+applySkin();
+// skins earned before this version are not announced again
+if (!meta.skinsSeen) { meta.skinsSeen = SKINS.filter((k) => skinUnlocked(k, meta)).map((k) => k.id); store.saveMeta(meta); }
+/** Skins earned since the last time we looked; marks them seen. */
+function newSkins() {
+  const fresh = SKINS.filter((k) => skinUnlocked(k, meta) && !meta.skinsSeen.includes(k.id));
+  if (fresh.length) { meta.skinsSeen.push(...fresh.map((k) => k.id)); store.saveMeta(meta); }
+  return fresh;
+}
 const titleArt = createTitleArt($('#title-art'));
 
 function haptic(p) {
@@ -125,7 +147,7 @@ function renderTools(container, tools, { onTap, empties = true, sellTags = false
       if (sellTags) {
         const tag = document.createElement('span');
         tag.className = 'sell';
-        tag.textContent = `${sellPrice(t)}닢`;
+        tag.textContent = `${sellPrice(t)}냥`;
         b.appendChild(tag);
       }
       b.addEventListener('click', (e) => { e.stopPropagation(); if (container._onTap) container._onTap(i, b); });
@@ -383,7 +405,6 @@ function titleScreen() {
   $('#best-line').textContent = meta.runs
     ? `최고 ${bestDayLabel(meta.bestDay)} · 최고 한 땀 ${fmt(meta.bestHand)} · 완성 ${meta.wins}회`
     : '';
-  $('#btn-sound').textContent = settings.sound ? '소리 켬' : '소리 끔';
   titleArt.start();
 }
 
@@ -459,7 +480,7 @@ function showGift() {
   hint(null);
   spot(run.gift);
   const html = `<div class="eyebrow">첫 손님의 선물</div><h2>도구를 하나 고르세요</h2>
-    <p class="lead">도구는 칩과 배수를 키워 줘요. ${MAX_TOOLS}개까지 들 수 있고 장터에서 사고팔 수 있어요.</p>
+    <p class="lead">도구는 엽전과 배수를 키워 줘요. ${MAX_TOOLS}개까지 들 수 있고 장터에서 사고팔 수 있어요.</p>
     <div class="cards">${run.gift.map((id, i) => toolCard(id, { action: `<button class="btn btn-gold btn-small" data-gift="${i}" ${i === 0 ? 'data-autofocus' : ''}>고르기</button>` })).join('')}</div>`;
   const s = openModal(html);
   on(s, '[data-gift]', once((e, n) => {
@@ -510,7 +531,7 @@ function showIntro() {
   const boss = R.BOSSES[o.boss];
   const html = `<div class="eyebrow">${dayLabel()}${run.day <= R.DAYS ? ` / ${R.DAYS}` : ''}</div><h2>${kindName(o.kind)}</h2>
     <div class="big-target"><span class="num">${fmt(o.target)}</span><small>점 이상 지어 주세요</small></div>
-    <div class="facts"><span class="fact">조각 <b>${o.patchesLeft}</b></span><span class="fact">바꾸기 <b>${o.discardsLeft}</b></span><span class="fact">보상 <b>${R.ORDER_KINDS[o.kind].reward}</b>닢</span></div>
+    <div class="facts"><span class="fact">조각 <b>${o.patchesLeft}</b></span><span class="fact">바꾸기 <b>${o.discardsLeft}</b></span><span class="fact">보상 <b>${R.ORDER_KINDS[o.kind].reward}</b>냥</span></div>
     <div class="boss-card"><span class="seal-mark">${boss.name[0]}</span><div><b>${boss.name}</b><span>${boss.desc}</span></div>${bossDemo(o.boss)}</div>
     ${dayTrack()}
     <div class="actions"><button class="btn btn-seal" id="go" data-autofocus>바느질 시작</button></div>`;
@@ -537,7 +558,7 @@ function begin() {
   patchWarned = false;
   if (!meta.tutorial && run.day === 1 && run.orderIdx === 0) { hintStage = 1; hint(`조각을 끌어 수틀에 놓으세요. 조각은 ${run.order.patchesLeft}개뿐이에요`); }
   else if (run.order.boss === 'knots' && teachOnce('knots', '매듭이 든 줄도 나머지를 채우면 매듭째 풀려요', 4200)) { /* taught */ }
-  else if (run.order.boss === 'ink' && teachOnce('ink', '먹물: 흑색 칸은 지워도 칩을 주지 않아요. 다른 색 줄을 노리세요', 4200)) { /* taught */ }
+  else if (run.order.boss === 'ink' && teachOnce('ink', '먹물: 흑색 칸은 지워도 엽전을 주지 않아요. 다른 색 줄을 노리세요', 4200)) { /* taught */ }
   else if (run.order.boss === 'strict' && teachOnce('strict', '깐깐한 눈: 모든 배수가 절반이에요. 목표가 그만큼 낮아요', 4200)) { /* taught */ }
   else if (pendingHint) { hint(pendingHint, 3200); pendingHint = null; }
   if (ev.some((e) => e.type === 'stuck')) stuckHint();
@@ -631,7 +652,7 @@ function showPreview(h) {
 
 function tallyHtml(seam, chips, mult, label, win = false) {
   const head = seam ? `<div class="seam">${SEAM_BY_ID[seam].name} ${shapeTag(seam)}<small>${lvTag(seam)}</small></div>` : '';
-  return `${head}<div class="row"><span class="chips"><small>칩</small><em>${chips}</em></span><span class="x">×</span><span class="mult"><small>배수</small><em>${mult}</em></span></div><div class="label${win ? ' win' : ''}">${label}</div>`;
+  return `${head}<div class="row"><span class="chips"><small>엽전</small><em>${chips}</em></span><span class="x">×</span><span class="mult"><small>배수</small><em>${mult}</em></span></div><div class="label${win ? ' win' : ''}">${label}</div>`;
 }
 
 el.discardBtn.addEventListener('click', () => {
@@ -763,7 +784,7 @@ function startTally(ev) {
     const lEl = $('.label', tally);
     const boardMid = view.cellCenterApp(3.5, 3.5);
     const topY = view.boardRectInApp().y + view.cell * 2.6;
-    if (teach) hint('지운 모양이 족보가 되고, 칩 × 배수가 점수예요', 4200);
+    if (teach) hint('지운 모양이 족보가 되고, 엽전 × 배수가 점수예요', 4200);
     let toolBeat = 420;
     let tick = 0;
     for (const st of result.steps) {
@@ -773,7 +794,7 @@ function startTally(ev) {
       if (st.src === 'seam') {
         chips = st.chips;
         mult = st.mult;
-        label = `${SEAM_BY_ID[st.seam].short} · 칩 ${st.chips} × 배수 ${st.mult}`;
+        label = `${SEAM_BY_ID[st.seam].short} · 엽전 ${st.chips} × 배수 ${st.mult}`;
         beat = 420;
         if (st.seam !== 'single') {
           view.text(SEAM_BY_ID[st.seam].name, boardMid.x, boardMid.y, { size: 30, color: '#f3ead6', dur: 1100, rise: 14 });
@@ -795,7 +816,7 @@ function startTally(ev) {
         beat = 320;
       } else {
         const name = TOOLS[st.src].name;
-        if (st.chips) { chips += st.chips; fireTool(st.slot, `+${st.chips} 칩`, 'chips'); label = `${name} 칩 +${st.chips}`; }
+        if (st.chips) { chips += st.chips; fireTool(st.slot, `엽전 +${st.chips}`, 'chips'); label = `${name} 엽전 +${st.chips}`; }
         if (st.mult) { mult += st.mult; fireTool(st.slot, `+${fmtMult(st.mult)} 배수`, 'mult'); label = `${name} 배수 +${fmtMult(st.mult)}`; }
         if (st.xmult) { mult *= st.xmult; fireTool(st.slot, `×${fmtMult(st.xmult)}`, 'xmult'); label = `${name} 배수 ×${fmtMult(st.xmult)}`; }
         beat = toolBeat;
@@ -908,7 +929,7 @@ function showReward() {
   const rw = run.reward;
   const html = `<div class="eyebrow">${dayLabel()} · ${kindName(run.order.kind)}</div><h2>품삯을 받았어요</h2>
     <div class="reward-list">${rw.lines.map((l) => `<div class="reward-line"><span>${l.label}</span><b>+${l.coins}</b></div>`).join('')}</div>
-    <div class="reward-total"><span>합계</span><b>${rw.total}닢</b></div>
+    <div class="reward-total"><span>합계</span><b>${rw.total}냥</b></div>
     <div class="actions"><button class="btn btn-gold" id="collect" data-autofocus>받기</button></div>`;
   const s = openModal(html);
   s.querySelectorAll('.reward-line').forEach((n, i) => setTimeout(() => { n.classList.add('in'); sfx.coin(i); }, 120 + i * 140));
@@ -940,8 +961,8 @@ function patternCard(pt, i) {
   return `<div class="card pattern${pt.sold ? ' sold' : ''}">
     <div class="art">${seamIcon(pt.id)}</div>
     <div class="min"><div class="name">${seam.name} 본 ${shapeTag(pt.id)} <span class="up">Lv.${lv}→${lv + 1}</span></div>
-      <div class="desc">칩 ${now.chips}→${nxt.chips}, 배수 ${now.mult}→${nxt.mult}</div></div>
-    <button class="btn btn-small ${can ? 'btn-gold' : 'btn-ghost'} price" data-pattern="${i}" ${can ? '' : 'disabled'}>${pt.sold ? '팔림' : `${PATTERN_PRICE}닢`}</button></div>`;
+      <div class="desc">엽전 ${now.chips}→${nxt.chips}, 배수 ${now.mult}→${nxt.mult}</div></div>
+    <button class="btn btn-small ${can ? 'btn-gold' : 'btn-ghost'} price" data-pattern="${i}" ${can ? '' : 'disabled'}>${pt.sold ? '팔림' : `${PATTERN_PRICE}냥`}</button></div>`;
 }
 
 function showSeams(back) {
@@ -966,12 +987,12 @@ function showShop() {
   const sh = run.shop;
   const full = run.tools.length >= MAX_TOOLS;
   const html = `<div class="shop-head"><div><div class="eyebrow left">${dayLabel()}</div><h2>장터</h2></div>
-      <div class="shop-tools"><button class="btn btn-ghost btn-small" id="reroll" aria-label="도구와 본 새로 진열" ${run.coins < sh.rerollCost ? 'disabled' : ''}>${glyph.reroll}새로 진열 ${sh.rerollCost}닢</button>
+      <div class="shop-tools"><button class="btn btn-ghost btn-small" id="reroll" aria-label="도구와 본 새로 진열" ${run.coins < sh.rerollCost ? 'disabled' : ''}>${glyph.reroll}새로 진열 ${sh.rerollCost}냥</button>
       <span class="coin-pill">${glyph.coin}<span>${run.coins}</span></span></div></div>
     <div class="cards">${sh.offers.map((of, i) => {
       const price = TOOLS[of.id].price;
       const can = !of.sold && !full && run.coins >= price;
-      const label = of.sold ? '팔림' : full ? '칸 없음' : `${price}닢`;
+      const label = of.sold ? '팔림' : full ? '칸 없음' : `${price}냥`;
       return toolCard(of.id, { sold: of.sold, action: `<button class="btn btn-small ${can ? 'btn-gold' : 'btn-ghost'} price" data-buy="${i}" ${can ? '' : 'disabled'}>${label}</button>` });
     }).join('')}</div>
     <div class="section-label"><span><b>바느질 본</b> 사면 그 족보가 한 단계 올라요</span><button class="link" id="open-seams">족보표</button></div>
@@ -988,7 +1009,7 @@ function showShop() {
       const t = run.tools[i];
       const btn = document.createElement('button');
       btn.className = 'btn btn-small btn-seal tip-action';
-      btn.textContent = `${sellPrice(t)}닢에 팔기`;
+      btn.textContent = `${sellPrice(t)}냥에 팔기`;
       btn.addEventListener('click', once(() => {
         R.sell(run, i);
         sfx.coin(0);
@@ -1004,7 +1025,7 @@ function showShop() {
     const i = +n.dataset.buy;
     const id = sh.offers[i].id;
     const res = R.buy(run, i);
-    if (!res.ok) { toast(res.reason === 'full' ? '도구 칸이 가득 찼어요. 먼저 하나를 파세요' : '엽전이 모자라요'); showShop(); return; }
+    if (!res.ok) { toast(res.reason === 'full' ? '도구 칸이 가득 찼어요. 먼저 하나를 파세요' : '돈이 모자라요'); showShop(); return; }
     discover(id);
     sfx.buy();
     haptic(15);
@@ -1014,7 +1035,7 @@ function showShop() {
   }));
   on(s, '[data-pattern]', once((e, n) => {
     const res = R.buyPattern(run, +n.dataset.pattern);
-    if (!res.ok) { toast('엽전이 모자라요'); showShop(); return; }
+    if (!res.ok) { toast('돈이 모자라요'); showShop(); return; }
     sfx.buy();
     haptic(15);
     persist();
@@ -1038,6 +1059,7 @@ function showShop() {
 /** Writes records immediately (before any animation) so closing the app can't lose them. */
 function recordRun(victory) {
   endInfo = writeRecords(meta, run, { victory });
+  endInfo.skins = newSkins();
   store.saveMeta(meta);
 }
 
@@ -1052,6 +1074,9 @@ function showEnd(victory, ev) {
   const unlockedNote = endInfo.unlocked && endInfo.unlocked.length
     ? `<div class="unlock-note">${endInfo.unlocked.map((id) => `<span class="art">${toolArt(TOOLS[id])}</span>`).join('')}<div><b>새 도구가 장터에 나와요</b><span>${endInfo.unlocked.map((id) => TOOLS[id].name).join(', ')}</span></div></div>`
     : '';
+  const skinNote = endInfo.skins && endInfo.skins.length
+    ? `<div class="unlock-note">${endInfo.skins.map((k) => `<span class="art">${skinSwatch(k, true)}</span>`).join('')}<div><b>새 꾸미기를 얻었어요</b><span>${endInfo.skins.map((k) => k.name).join(', ')} · 처음 화면의 「꾸미기」에서 바꿔요</span></div></div>`
+    : '';
   const quilt = `<figure class="quilt"><canvas id="quilt" aria-label="이번 판의 조각누비"></canvas><figcaption>이번 판의 조각누비</figcaption></figure>`;
   const share = run.mode === 'daily' ? '<button class="btn btn-ghost" id="share">결과 복사하기</button>' : '';
   let html;
@@ -1060,7 +1085,7 @@ function showEnd(victory, ev) {
     sfx.perfect();
     html = `<div class="eyebrow">${R.DAYS}일의 장이 끝났어요</div><h2>누비 완성</h2>
       <p class="lead">손님들이 모두 만족했어요. 밤을 새워 더 큰 주문에 도전할 수도 있어요.</p>
-      <div class="end-body">${quilt}${grid}</div>${unlockedNote}
+      <div class="end-body">${quilt}${grid}</div>${unlockedNote}${skinNote}
       <div class="actions"><button class="btn btn-gold" id="endless" data-autofocus>밤샘 작업 이어가기</button>${share}
       <button class="btn btn-ghost" id="home">처음으로</button></div>`;
   } else {
@@ -1068,7 +1093,7 @@ function showEnd(victory, ev) {
     const near = short <= run.order.target * 0.1;
     html = `<div class="eyebrow">${dayLabel()} · ${kindName(run.order.kind)}</div><h2>${near ? '아깝다!' : '주문 실패'}</h2>
       <p class="shortfall">목표까지 <b>${fmt(short)}</b>점 모자랐어요</p>
-      <div class="end-body">${quilt}${grid}</div>${unlockedNote}
+      <div class="end-body">${quilt}${grid}</div>${unlockedNote}${skinNote}
       <div class="actions"><button class="btn btn-seal" id="again" data-autofocus>${run.mode === 'daily' ? '오늘의 의뢰 다시' : '다시 짓기'}</button>${share}
       <button class="btn btn-ghost" id="home">처음으로</button></div>`;
   }
@@ -1132,12 +1157,50 @@ function showPause() {
     ${switchRow('sw-sound', '소리', settings.sound)}${switchRow('sw-ambient', '배경 가락', settings.ambient !== false)}${switchRow('sw-haptics', '진동', settings.haptics)}${switchRow('sw-fast', '빠른 연출', settings.fast)}
     <div class="actions"><button class="btn btn-seal" id="resume" data-autofocus>계속하기</button>
     <button class="btn btn-ghost" id="how">하는 방법</button>
+    <button class="btn btn-ghost" id="skin">공방 꾸미기</button>
     <button class="btn btn-ghost" id="quit">처음으로 (진행 저장됨)</button></div>`;
   const s = openModal(html, { center: true, close: () => resumePhase() });
   bindSwitches(s);
   on(s, '#resume', () => resumePhase());
   on(s, '#how', () => showHow(() => { closeModal(); showPause(); }));
+  on(s, '#skin', () => showSkins(() => { closeModal(); showPause(); }, false));
   on(s, '#quit', () => { persist(); titleScreen(); });
+}
+
+/** A tiny picture of the skin: its cloth, a silk panel and the hoop with a few patches. */
+function skinSwatch(k, mini = false) {
+  return `<span class="swatch${mini ? ' mini' : ''}" style="--sw-g:${k.ground};--sw-s:${k.silk};--sw-s2:${k.silk2};--sw-w:${k.wood.mid};--sw-w2:${k.wood.shadow};--sw-f:${k.wood.field}" aria-hidden="true">
+    <i class="sw-panel"></i><i class="sw-hoop"><i></i><i></i><i></i><i></i></i></span>`;
+}
+
+function skinCard(k, current) {
+  const open = skinUnlocked(k, meta);
+  const p = !open && skinProgress(k, meta);
+  return `<button class="skin-card${open ? '' : ' locked'}" data-skin="${k.id}" aria-pressed="${k.id === current}" ${open ? '' : 'disabled'}>
+    ${skinSwatch(k)}<b>${k.name}</b><span>${open ? k.note : `${p.need} (${p.have}/${p.goal})`}</span></button>`;
+}
+
+/** Skin picker; from the title it also carries the sound and feel switches. */
+function showSkins(back, withSettings = true) {
+  const current = resolveSkin(settings.skin, meta).id;
+  const html = `<div class="eyebrow">천과 수틀</div><h2>공방 꾸미기</h2>
+    <p class="lead">공방의 천과 비단, 수틀을 바꿔요. 조각 색과 점수는 그대로예요.</p>
+    <div class="skin-grid">${SKINS.map((k) => skinCard(k, current)).join('')}</div>
+    ${withSettings ? `<div class="section-label"><span>설정</span></div>${switchRow('sw-sound', '소리', settings.sound)}${switchRow('sw-ambient', '배경 가락', settings.ambient !== false)}${switchRow('sw-haptics', '진동', settings.haptics)}${switchRow('sw-fast', '빠른 연출', settings.fast)}` : ''}
+    <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>다 됐어요</button></div>`;
+  const done = () => (back ? back() : closeModal());
+  const s = openModal(html, { close: done });
+  if (withSettings) bindSwitches(s);
+  s.querySelectorAll('.skin-card:not([disabled])').forEach((n) => n.addEventListener('click', () => {
+    settings.skin = n.dataset.skin;
+    store.saveSettings(settings);
+    applySkin();
+    s.querySelectorAll('.skin-card').forEach((c) => c.setAttribute('aria-pressed', c === n));
+    unlock();
+    sfx.ui();
+    haptic(10);
+  }));
+  on(s, '#back', done);
 }
 
 function showHow(back) {
@@ -1145,10 +1208,10 @@ function showHow(back) {
     <div class="how">
       <p><b>조각 놓기</b> — 아래 조각을 끌어 수틀에 놓아요. 놓을 때마다 남은 조각이 하나씩 줄어요.</p>
       <p><b>줄 누비기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 누벼지고 점수가 나요.</p>
-      <p><b>바느질 족보</b> — 지운 모양에 따라 기법이 정해져요. 홈질(한 줄), 겹누비(같은 방향 두 줄), 십자수(가로+세로), 납작누비(한 색으로 채운 줄), 세누비(세 줄 이상), 오목누비(한 색 줄 둘 이상), 마무리(판을 다 비움). 기법마다 칩과 배수가 정해져 있어요.</p>
-      <p><b>칩 × 배수</b> — 족보의 칩에 지운 칸마다 5를 더하고, 연달아 지우면 배수가 올라요. 도구가 칩과 배수를 더 키워요.</p>
+      <p><b>바느질 족보</b> — 지운 모양에 따라 기법이 정해져요. 홈질(한 줄), 겹누비(같은 방향 두 줄), 십자수(가로+세로), 납작누비(한 색으로 채운 줄), 세누비(세 줄 이상), 오목누비(한 색 줄 둘 이상), 마무리(판을 다 비움). 기법마다 엽전과 배수가 정해져 있어요.</p>
+      <p><b>엽전 × 배수</b> — 족보의 엽전에 지운 칸마다 5를 더하고, 연달아 지우면 배수가 올라요. 도구가 엽전과 배수를 더 키워요.</p>
       <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 놓을 데가 없으면 「조각 바꾸기」로 트레이를 새로 받아요.</p>
-      <p><b>장터</b> — 품삯으로 바느질 도구와 바느질 본을 사요. 본은 족보 레벨을 올려 줘요. 한 족보를 키워 빌드를 만들어 보세요. 엽전을 모아 두면 ${R.INTEREST_PER}닢마다 이자가 1닢(최대 ${R.INTEREST_CAP}닢) 붙어요.</p>
+      <p><b>장터</b> — 품삯으로 바느질 도구와 바느질 본을 사요. 본은 족보 레벨을 올려 줘요. 한 족보를 키워 빌드를 만들어 보세요. 돈을 모아 두면 ${R.INTEREST_PER}냥마다 이자가 1냥(최대 ${R.INTEREST_CAP}냥) 붙어요.</p>
     </div>
     <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>알겠어요</button></div>`;
   const done = () => (back ? back() : closeModal());
@@ -1210,7 +1273,12 @@ function confirmReplace(title, go) {
   on(s, '#yes', once(() => {
     // the abandoned run still counts toward records and unlock progress
     const old = store.loadRun();
-    if (R.isValidSave(old)) { writeRecords(meta, R.migrate(old), { victory: false }); store.saveMeta(meta); }
+    if (R.isValidSave(old)) {
+      writeRecords(meta, R.migrate(old), { victory: false });
+      store.saveMeta(meta);
+      const fresh = newSkins();
+      if (fresh.length) toast(`새 꾸미기를 얻었어요: ${fresh.map((k) => k.name).join(', ')}`, 2600);
+    }
     store.clearRun();
     go();
   }));
@@ -1229,13 +1297,7 @@ on(document, '#btn-daily', () => {
 on(document, '#btn-codex', () => showCodex());
 on(document, '#btn-records', () => showRecords());
 on(document, '#btn-how', () => showHow());
-on(document, '#btn-sound', (e, n) => {
-  settings.sound = !settings.sound;
-  setEnabled(settings.sound);
-  setAmbient(settings.sound && settings.ambient !== false);
-  store.saveSettings(settings);
-  n.textContent = settings.sound ? '소리 켬' : '소리 끔';
-});
+on(document, '#btn-skin', () => showSkins());
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) persist();

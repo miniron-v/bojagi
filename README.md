@@ -1,7 +1,7 @@
 # 누빔 공방 · Nubim Workshop
 
 천 조각을 끌어 수틀을 채우고, 줄이 차면 바늘이 그 줄을 누비는 모바일 퍼즐 로그라이트.
-Block Blast의 손맛에 Balatro의 **칩 × 배수** 점수 엔진을 얹어 한 판 10분 남짓으로 압축했습니다.
+Block Blast의 손맛에 Balatro의 **칩 × 배수** 점수 엔진(여기선 **엽전 × 배수**, 장터 돈은 냥)을 얹어 한 판 10분 남짓으로 압축했습니다.
 
 - 8×8 수틀, 3개씩 주어지는 조각, 가로·세로 줄 완성 시 바느질
 - 주문마다 목표 점수와 조각 수 제한, 장인 의뢰(보스)는 쉬운 규칙부터 하루에 하나씩
@@ -36,7 +36,7 @@ src/core/   순수 로직 (DOM 없음, 저장 가능한 JSON 상태)
   shapes.js     조각 모양과 회전
   board.js      배치·줄 판정·지우기
   seams.js      바느질 족보 판정·레벨
-  scoring.js    칩 × 배수 계산과 단계별 내역(연출용)
+  scoring.js    엽전 × 배수 계산과 단계별 내역(연출용)
   tools.js      바느질 도구 정의
   unlocks.js    도구 해금 조건
   records.js    공방 일지(기록·연속 일수·해금 판정)
@@ -45,6 +45,7 @@ src/ui/     화면
   view.js       캔버스 수틀, 드래그 앤 드롭, 바느질·파티클·글자 연출
   main.js       컨트롤러: HUD, 점수 집계 연출, 시트(장터·보상·종료), 저장
   audio.js      Web Audio 합성 (Karplus–Strong 가야금)
+  skins.js      공방 꾸미기: 스킨별 CSS 변수와 캔버스 색
   art.js · icons.js · title-art.js · quilt.js · format.js · store.js · style.css
 tools/      빌드, 시뮬레이터, e2e 스크립트
 ```

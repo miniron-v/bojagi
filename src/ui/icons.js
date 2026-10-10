@@ -49,7 +49,7 @@ const art = {
     <rect x="21" y="3" width="6" height="6" rx="1" fill="${W2}"/><path d="M15 26 l4 -4 l4 4 l4 -4 l4 4" stroke="${R}" stroke-width="2" fill="none"/><path d="M17 31 h14" stroke="var(--c-blue)" stroke-width="2" stroke-dasharray="3 2"/>`),
   hand: () => S(`<path d="M14 44 V24 Q14 21 17 21 Q20 21 20 24 V14 Q20 11 23 11 Q26 11 26 14 V22 V12 Q26 9 29 9 Q32 9 32 12 V24 V16 Q32 13 35 13 Q38 13 38 16 V32 Q38 44 26 44Z" fill="#e8c9a4"/>
     <path d="M10 6 L40 38" stroke="#c9cfdc" stroke-width="1.6"/><path d="M40 38 Q44 44 36 44" stroke="${R}" stroke-width="1.6" fill="none"/>`),
-  coins: () => S(`${[[16, 30], [30, 30], [23, 18]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="10" fill="${G}"/><circle cx="${x}" cy="${y}" r="10" fill="none" stroke="var(--gold-2)" stroke-width="1.5"/><rect x="${x - 3}" y="${y - 3}" width="6" height="6" fill="var(--indigo)"/>`).join('')}`),
+  coins: () => S(`${[[16, 30], [30, 30], [23, 18]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="10" fill="${G}"/><circle cx="${x}" cy="${y}" r="10" fill="none" stroke="var(--gold-2)" stroke-width="1.5"/><rect x="${x - 3}" y="${y - 3}" width="6" height="6" fill="var(--deep)"/>`).join('')}`),
   silk: () => S(`<path d="M8 14 Q24 6 40 14 L40 34 Q24 42 8 34Z" fill="#b77bd0"/><path d="M8 14 Q24 22 40 14" fill="none" stroke="#e2b9f0" stroke-width="2"/>
     <path d="M8 24 Q24 32 40 24" fill="none" stroke="#9a5fb4" stroke-width="1.5"/><circle cx="20" cy="28" r="2.5" fill="${G}"/><circle cx="30" cy="22" r="2" fill="${G}"/>`),
   // 밀대: the rod a nubi is rolled on while quilting, inlaid with mother-of-pearl
@@ -66,7 +66,7 @@ const art = {
   sleeve: () => S(`<path d="M6 10 L30 10 L42 30 L42 40 L18 40 Z" fill="var(--c-white)"/>
     ${['var(--seal)', 'var(--gold)', 'var(--jade)', 'var(--c-blue)', 'var(--pink)'].map((c, i) => `<path d="M${10 + i * 4} 10 L${14 + i * 4} 10 L${26 + i * 4} 40 L${22 + i * 4} 40Z" fill="${c}"/>`).join('')}
     <path d="M36 30 h6 v10 h-6z" fill="${R}"/>`),
-  needle: () => S(`<path d="M10 40 L38 8" stroke="#dfe3ec" stroke-width="3" stroke-linecap="round"/><ellipse cx="36" cy="10" rx="1.2" ry="3" transform="rotate(42 36 10)" fill="var(--indigo)"/>
+  needle: () => S(`<path d="M10 40 L38 8" stroke="#dfe3ec" stroke-width="3" stroke-linecap="round"/><ellipse cx="36" cy="10" rx="1.2" ry="3" transform="rotate(42 36 10)" fill="var(--deep)"/>
     <path d="M36 10 Q44 20 34 26 Q24 32 30 42" stroke="${R}" stroke-width="2" fill="none"/>`),
 };
 
@@ -76,7 +76,7 @@ export function toolArt(def) {
 }
 
 export const glyph = {
-  coin: S(`<circle cx="24" cy="24" r="18" fill="var(--gold)"/><circle cx="24" cy="24" r="18" fill="none" stroke="var(--gold-2)" stroke-width="3"/><rect x="18" y="18" width="12" height="12" fill="var(--indigo)"/>`),
+  coin: S(`<circle cx="24" cy="24" r="18" fill="var(--gold)"/><circle cx="24" cy="24" r="18" fill="none" stroke="var(--gold-2)" stroke-width="3"/><rect x="18" y="18" width="12" height="12" fill="var(--deep)"/>`),
   patch: S(`<rect x="8" y="8" width="32" height="32" rx="5" fill="var(--c-blue)"/><rect x="13" y="13" width="22" height="22" rx="3" fill="none" stroke="var(--thread)" stroke-width="2" stroke-dasharray="4 3"/>`),
   pause: S(`<rect x="12" y="10" width="8" height="28" rx="2" fill="currentColor"/><rect x="28" y="10" width="8" height="28" rx="2" fill="currentColor"/>`),
   scroll: S(`<rect x="8" y="8" width="32" height="32" rx="2" fill="none" stroke="currentColor" stroke-width="3"/><path d="M14 16 h20 M14 24 h20 M14 32 h12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`),

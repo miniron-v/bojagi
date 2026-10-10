@@ -17,12 +17,12 @@ const defs = [
   },
   {
     id: 'needlecase', name: '바늘쌈', rarity: 1, price: 4, art: 'needlecase',
-    desc: () => '줄을 지울 때 칩 +50',
+    desc: () => '줄을 지울 때 엽전 +50',
     score: (ctx) => (ctx.lineCount ? [{ chips: 50 }] : []),
   },
   ...COLORS.map((color) => ({
     id: `thread_${color}`, name: THREAD_NAME[color], rarity: 1, price: 4, art: 'thread', color,
-    desc: () => `줄을 지울 때 ${COLOR_NAMES[color]}색 칸 하나마다 칩 +10`,
+    desc: () => `줄을 지울 때 ${COLOR_NAMES[color]}색 칸 하나마다 엽전 +10`,
     score: (ctx) => {
       const n = ctx.cleared.filter((c) => c.color === color).length;
       return n ? [{ chips: n * 10 }] : [];
@@ -35,7 +35,7 @@ const defs = [
   },
   {
     id: 'pouch', name: '복주머니', rarity: 1, price: 3, art: 'pouch',
-    desc: () => '주문을 마칠 때 엽전 +2',
+    desc: () => '주문을 마칠 때 +2냥',
     reward: () => 2,
   },
   {
@@ -67,7 +67,7 @@ const defs = [
   },
   {
     id: 'spool', name: '실패', rarity: 2, price: 6, art: 'spool',
-    desc: () => '줄을 지울 때 연속 1회마다 칩 +30',
+    desc: () => '줄을 지울 때 연속 1회마다 엽전 +30',
     score: (ctx) => (ctx.lineCount ? [{ chips: 30 * ctx.streak }] : []),
   },
   {
@@ -132,17 +132,17 @@ const defs = [
   },
   {
     id: 'sleeve', name: '색동 소매', rarity: 1, price: 4, art: 'sleeve',
-    desc: () => '겹누비·십자수로 지울 때 칩 +80',
+    desc: () => '겹누비·십자수로 지울 때 엽전 +80',
     score: (ctx) => (ctx.seam === 'double' || ctx.seam === 'cross' ? [{ chips: 80 }] : []),
   },
   {
-    id: 'coins', name: '엽전 꾸러미', rarity: 3, price: 7, art: 'coins',
-    desc: () => '줄을 지울 때 가진 엽전 5닢마다 배수 +1 (최대 +8)',
+    id: 'coins', name: '전대', rarity: 3, price: 7, art: 'coins',
+    desc: () => '줄을 지울 때 가진 돈 5냥마다 배수 +1 (최대 +8)',
     score: (ctx) => (ctx.lineCount && ctx.coins >= 5 ? [{ mult: Math.min(8, Math.floor(ctx.coins / 5)) }] : []),
   },
   {
     id: 'silk', name: '비단', rarity: 3, price: 8, art: 'silk',
-    desc: (inst) => `줄을 지울 때 칩 +${inst.data.chips || 0} (조각을 놓을 때마다 +3씩 자람, 주문마다 처음부터)`,
+    desc: (inst) => `줄을 지울 때 엽전 +${inst.data.chips || 0} (조각을 놓을 때마다 +3씩 자람, 주문마다 처음부터)`,
     init: () => ({ chips: 0 }),
     badge: (inst) => `+${inst.data.chips}`,
     onPlace: (inst) => { inst.data.chips += 3; },
