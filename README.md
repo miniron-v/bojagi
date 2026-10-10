@@ -39,6 +39,7 @@ src/core/   순수 로직 (DOM 없음, 저장 가능한 JSON 상태)
   scoring.js    엽전 × 배수 계산과 단계별 내역(연출용)
   tools.js      바느질 도구 정의
   unlocks.js    도구 해금 조건
+  challenges.js 도전 과제(한 판 목표 → 스킨 보상)
   records.js    공방 일지(기록·연속 일수·해금 판정)
   run.js        주문·장터·보스·경제 상태 머신, 저장 검증·마이그레이션
 src/ui/     화면

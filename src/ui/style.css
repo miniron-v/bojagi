@@ -6,23 +6,27 @@
    Type: one family, Hahmlet, with hierarchy from weight and size only (800 is kept for the
    logo, the score and totals). One portrait column, max 480px. */
 :root {
-  --ground: #141b33;
-  --silk: #1f2a4f;
-  --silk-2: #2a3866;
-  --silk-3: #3a4b84;
-  --deep: #10162c;
-  --deep-a: #10162cf0;
-  --deep-b: #10162cb3;
-  --veil: #090d1ccc;
-  --card-rare: #2c2b55;
-  --card-pattern: #2b2342;
+  /* defaults = the 쪽빛 skin; src/ui/skins.js overrides these at runtime */
+  --ground: #7d9ad6;
+  --on-ground: #16224a;
+  --on-ground-2: #2f4078;
+  --ground-line: #16224a40;
+  --silk: #34519a;
+  --silk-2: #4363ad;
+  --silk-3: #5a7cc6;
+  --deep: #263d78;
+  --deep-a: #263d78f0;
+  --deep-b: #263d78b3;
+  --veil: #121c3ab8;
+  --card-rare: #4a3f9a;
+  --card-pattern: #5a3a7a;
   --sheen: #ffffff0c;
   --linen: #ebdfc5;
   --wood: #8e5c35;
   --wood-2: #5b381d;
   --thread: #f3ead6;
-  --muted: #b3b8cf;
-  --dim: #7d84a3;
+  --muted: #cfd8f0;
+  --dim: #97a7d2;
   --seal: #c63d31;
   --seal-2: #8f2219;
   --gold: #e2b54a;
@@ -94,13 +98,14 @@ b, .num { font-variant-numeric: tabular-nums; }
 /* ---------- Title ---------- */
 #title { align-items: center; justify-content: space-between; padding-block: 26px 22px; padding-inline: 20px; text-align: center; }
 #title-art { width: min(72vw, 300px); aspect-ratio: 1; max-width: 100%; }
+.logo { color: var(--on-ground); }
 .logo { font-family: var(--font-display); font-weight: 800; font-size: clamp(46px, 14vw, 64px); line-height: 1; margin: 0; text-wrap: balance; }
 .logo::after { content: ''; display: block; width: 140px; height: 7px; margin: 14px auto 0; background: var(--saekdong); border-radius: 1px; }
-.logo small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 14px; color: var(--muted); margin-top: 12px; }
+.logo small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 14px; color: var(--on-ground-2); margin-top: 12px; }
 .title-menu { display: flex; flex-direction: column; gap: 10px; width: min(100%, 320px); }
 .title-foot { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; gap: 8px; }
 .title-foot .btn { white-space: nowrap; padding: 0 6px; }
-.best-line { color: var(--muted); font-size: 13px; min-height: 1.2em; margin: 0 0 4px; }
+.best-line { color: var(--on-ground-2); font-size: 13px; min-height: 1.2em; margin: 0 0 4px; }
 
 /* ---------- Buttons: cloth tags ---------- */
 .btn {
@@ -108,6 +113,7 @@ b, .num { font-variant-numeric: tabular-nums; }
   display: flex; align-items: center; justify-content: center; gap: 8px;
   min-height: 52px; padding: 0 18px;
   font-family: var(--font-display); font-weight: 600; font-size: 16px; letter-spacing: -0.01em;
+  color: var(--thread);
   outline: 1.5px dashed #f3ead640; outline-offset: -5px;
   box-shadow: 0 3px 0 #0006;
   transition: transform .08s ease;
@@ -128,11 +134,11 @@ b, .num { font-variant-numeric: tabular-nums; }
 
 /* ---------- HUD ---------- */
 .hud-top { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px 0; gap: 8px; }
-.hud-top .where { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.hud-top .where { color: var(--on-ground); display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .day-label { font-family: var(--font-display); font-weight: 700; font-size: 22px; white-space: nowrap; }
-.day-label small { font-weight: 400; font-size: 13px; color: var(--muted); }
-.kind { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kind.boss { color: #ffaa9c; }
+.day-label small { font-weight: 400; font-size: 13px; color: var(--on-ground-2); }
+.kind { font-size: 13px; color: var(--on-ground-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kind.boss { color: var(--seal-2); font-weight: 700; }
 .hud-buttons { display: flex; gap: 6px; }
 .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; background: var(--silk-2); border-radius: var(--cut); outline: 1.5px dashed #f3ead633; outline-offset: -5px; }
 .icon-btn svg { width: 20px; height: 20px; }
@@ -172,7 +178,7 @@ b, .num { font-variant-numeric: tabular-nums; }
   position: relative; aspect-ratio: 1; max-height: 62px; display: grid; place-items: center;
   outline: 1.5px dashed #f3ead626; outline-offset: -4px; transition: transform .15s;
 }
-.tool.empty { background: transparent; outline: 1.5px dashed #f3ead61f; outline-offset: -1px; }
+.tool.empty { background: transparent; outline: 1.5px dashed var(--ground-line); outline-offset: -1px; }
 .tool svg { width: 72%; height: 72%; }
 .tool .sell { position: absolute; top: -6px; left: -3px; font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--gold); color: #2a1b05; font-weight: 700; }
 .tool .badge { position: absolute; bottom: -5px; right: -3px; font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--silk-3); color: var(--thread); font-weight: 700; font-family: var(--font-display); }
@@ -591,3 +597,24 @@ b, .num { font-variant-numeric: tabular-nums; }
 .swatch.mini { width: 40px; height: 40px; aspect-ratio: auto; }
 .swatch.mini .sw-panel { display: none; }
 .swatch.mini .sw-hoop { top: 18%; width: 64%; box-shadow: 0 0 0 3px var(--sw-w); }
+
+/* ---------- 도전 과제 ---------- */
+.challenges { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.challenge { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--cut); background: #ffffff0f; outline: 1.5px dashed #f3ead61f; outline-offset: -4px; }
+.challenge .art { flex: none; }
+.ch-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ch-text b { font-size: 14.5px; font-weight: 700; }
+.ch-text > span { font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+.ch-bar { display: block; height: 5px; margin-top: 3px; border-radius: 2px; background: #00000033; overflow: hidden; }
+.ch-bar i { display: block; height: 100%; background: var(--gold); border-radius: 2px; }
+.ch-text > .ch-reward { color: var(--gold); }
+.ch-num { flex: none; font-family: var(--font-display); font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+.ch-num small { font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.ch-tag { flex: none; font-size: 12px; padding: 2px 7px; border-radius: 3px; background: #ffffff1a; color: var(--muted); }
+.challenge.ch-ready { background: #e2b54a26; outline: 1.5px dashed #e2b54acc; animation: glow 1.6s ease-in-out infinite; }
+.challenge.ch-claimed { opacity: .72; }
+.challenge .claim { min-height: 38px; padding: 0 14px; flex: none; }
+.skin-card.just { animation: skinIn .6s cubic-bezier(.2,1.5,.4,1); }
+@keyframes skinIn { 0% { transform: scale(.85); } 60% { transform: scale(1.06); } 100% { transform: none; } }
+#btn-skin.has-claim::after { content: ''; position: absolute; top: -4px; right: -4px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--seal); box-shadow: 0 0 0 2px var(--ground); animation: glow 1.6s ease-in-out infinite; }

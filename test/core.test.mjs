@@ -475,15 +475,28 @@ test('patterns: only buildable seams are sold', () => {
   }
 });
 
-test('skins: locked choices fall back to the default; every skin defines its colours', async () => {
-  const { SKINS, resolveSkin, skinUnlocked, DEFAULT_SKIN } = await import('../src/ui/skins.js');
-  const fresh = { bestDay: 0, wins: 0, perfects: 0 };
-  assert.equal(resolveSkin('honghwa', fresh).id, DEFAULT_SKIN);
-  assert.equal(resolveSkin('nope', fresh).id, DEFAULT_SKIN);
-  assert.equal(resolveSkin('meok', fresh).id, 'meok');
-  assert.equal(resolveSkin('honghwa', { ...fresh, bestDay: 3 }).id, 'honghwa');
-  assert.ok(skinUnlocked(SKINS.find((k) => k.id === 'bisaek'), { wins: 1 }));
-  for (const k of SKINS) for (const f of ['ground', 'silk', 'silk2', 'silk3', 'deep', 'veil', 'rare', 'pattern', 'cloth', 'muted', 'dim']) {
+test('challenges: one-run feats, claimed by hand, pay out skins', async () => {
+  const { SKINS, resolveSkin, DEFAULT_SKIN } = await import('../src/ui/skins.js');
+  const C = await import('../src/core/challenges.js');
+  const meta = {};
+  assert.equal(resolveSkin('haneul', meta).id, DEFAULT_SKIN);
+  assert.deepEqual(C.checkChallenges(meta, { bestStreak: 3 }).map((c) => c.id), []);
+  assert.equal(C.challengeState(meta, 'streak5').have, 3);
+  // stats are per run: a later, weaker run never lowers the best
+  C.checkChallenges(meta, { bestStreak: 1 });
+  assert.equal(C.challengeState(meta, 'streak5').have, 3);
+  assert.deepEqual(C.checkChallenges(meta, { bestStreak: 6 }).map((c) => c.id), ['streak5']);
+  assert.deepEqual(C.checkChallenges(meta, { bestStreak: 7 }), [], 'announced once');
+  assert.equal(resolveSkin('haneul', meta).id, DEFAULT_SKIN, 'not worn until claimed');
+  assert.equal(C.claimable(meta).length, 1);
+  assert.ok(C.claimChallenge(meta, 'streak5'));
+  assert.ok(!C.claimChallenge(meta, 'streak5'));
+  assert.equal(resolveSkin('haneul', meta).id, 'haneul');
+  assert.ok(!C.claimChallenge(meta, 'finish'), 'cannot claim an unmet challenge');
+  // every skin but the default is a challenge reward, and every reward is a real skin
+  const rewards = new Set(C.CHALLENGES.map((c) => c.skin));
+  for (const k of SKINS) assert.equal(rewards.has(k.id), k.id !== DEFAULT_SKIN, k.id);
+  for (const k of SKINS) for (const f of ['ground', 'onGround', 'onGround2', 'silk', 'silk2', 'silk3', 'deep', 'veil', 'rare', 'pattern', 'cloth', 'muted', 'dim']) {
     assert.match(k[f], /^#[0-9a-f]{6}$/, `${k.id}.${f}`);
   }
 });

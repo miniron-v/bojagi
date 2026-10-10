@@ -96,14 +96,30 @@ await shot('codex');
 await page.click('.sheet-close');
 await page.waitForTimeout(300);
 await shot('after-close');
-// skins: picker, then the title and a board in an earned skin
-await page.evaluate(() => { const m = JSON.parse(localStorage.getItem('bojagi.meta.v1')); m.bestDay = 3; m.wins = 1; localStorage.removeItem('bojagi.run.v1'); localStorage.setItem('bojagi.meta.v1', JSON.stringify(m)); });
+// challenges + skins: two claimed, one ready to claim, the rest in progress
+await page.evaluate(() => {
+  const m = JSON.parse(localStorage.getItem('bojagi.meta.v1'));
+  m.challenges = { streak5: { best: 6, done: true, claimed: true }, mono6: { best: 6, done: true, claimed: true }, hand1500: { best: 1620, done: true, claimed: false }, day3: { best: 5, done: false, claimed: false } };
+  localStorage.removeItem('bojagi.run.v1');
+  localStorage.setItem('bojagi.meta.v1', JSON.stringify(m));
+});
 await page.goto(url);
+await page.waitForTimeout(400);
+await shot('title-jjok');
+await page.click('#btn-new');
+await page.waitForTimeout(900);
+await shot('board-jjok');
+await page.goto(url);
+await page.evaluate(() => localStorage.removeItem('bojagi.run.v1'));
+await page.reload();
 await page.waitForTimeout(400);
 await page.click('#btn-skin');
 await page.waitForTimeout(300);
 await shot('skins');
-for (const id of ['honghwa', 'bisaek', 'meok']) {
+await page.click('[data-claim="hand1500"]');
+await page.waitForTimeout(500);
+await shot('skins-claimed');
+for (const id of ['haneul', 'bisaek', 'honghwa']) {
   await page.click(`.skin-card[data-skin="${id}"]`);
   await page.waitForTimeout(150);
   await page.click('.sheet-close');
@@ -118,6 +134,18 @@ for (const id of ['honghwa', 'bisaek', 'meok']) {
   await page.waitForTimeout(400);
   await page.click('#btn-skin');
   await page.waitForTimeout(200);
+}
+// the last two skins, forced on for a look
+await page.evaluate(() => {
+  const m = JSON.parse(localStorage.getItem('bojagi.meta.v1'));
+  m.challenges.day3 = { best: 9, done: true, claimed: true }; m.challenges.finish = { best: 12, done: true, claimed: true };
+  localStorage.setItem('bojagi.meta.v1', JSON.stringify(m));
+});
+for (const id of ['deungkkot', 'hanji']) {
+  await page.evaluate((id) => { const st = JSON.parse(localStorage.getItem('bojagi.settings.v1') || '{}'); st.skin = id; localStorage.setItem('bojagi.settings.v1', JSON.stringify(st)); }, id);
+  await page.goto(url);
+  await page.waitForTimeout(400);
+  await shot(`title-${id}`);
 }
 console.log(JSON.stringify({ errors }));
 await browser.close();
