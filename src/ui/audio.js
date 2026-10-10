@@ -145,6 +145,7 @@ export const sfx = {
     tone(2093 + i * 40, 0.2, { type: 'sine', gain: 0.1, delay: 0.05 });
   },
   ui() { pluck(12, { gain: 0.14, bright: 0.8 }); },
+  peekWin() { [0, 4, 7].forEach((st, i) => pluck(9 + st, { gain: 0.16, delay: i * 0.05, bright: 0.85 })); },
   hover(lines = 1) { pluck(4 + lines * 2, { gain: 0.1, bright: 0.9 }); },
   win() { [0, 2, 4, 5, 7, 9].forEach((s, i) => pluck(5 + s, { gain: 0.4, delay: i * 0.09, bright: 0.6 })); },
   fail() { [9, 7, 4, 2].forEach((s, i) => pluck(s, { gain: 0.38, delay: i * 0.16, bright: 0.3, bend: -0.04 })); },

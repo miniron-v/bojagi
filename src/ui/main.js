@@ -24,6 +24,7 @@ const el = {
   coins: $('#hud-coins'), boss: $('#hud-boss'), tools: $('#hud-tools'), tally: $('#tally'), hint: $('#hint'),
   discardBtn: $('#btn-discard'), pause: $('#btn-pause'), statPatches: $('#stat-patches'), streak: $('#hud-streak'),
   seamBtn: $('#btn-seams'), seamTag: $('#hud-seam'), seamName: $('#hud-seam-name'),
+  order: $('.order'), peek: $('#peek'), proj: $('#hud-proj'),
 };
 
 let run = null;
@@ -403,6 +404,7 @@ function enterGame() {
   shownScore = run.order ? run.order.score : 0;
   el.score.textContent = fmt(shownScore);
   el.tally.classList.remove('show', 'preview');
+  clearPeek();
   view.setBoard(run.board);
   view.setTray(run.tray, fitsOf(), false);
   renderHud();
@@ -559,32 +561,55 @@ view.handlers.drop = (i, r, c, piece) => {
   return true;
 };
 
+/**
+ * Aiming preview. The order card stays visible and becomes the forecast: the bar's ghost shows
+ * where the score will land, the projected total sits next to the score, and a strip in place
+ * of the stats names the seam and its chips × mult. If the move would finish the order the
+ * whole card lights up (gold edge, green ghost, a seal stamped at the end of the bar).
+ */
+let peekWin = false;
+function clearPeek() {
+  el.order.classList.remove('previewing', 'peek-win');
+  el.ghost.style.width = '0';
+  el.ghost.classList.remove('win');
+  el.proj.textContent = '';
+  peekWin = false;
+  view.peekWin = false;
+}
+
 function showPreview(h) {
   if (!h || !run || run.phase !== 'play') {
-    if (!tallyJob) el.tally.classList.remove('show', 'preview');
-    el.ghost.style.width = '0';
-    el.ghost.classList.remove('win');
+    clearPeek();
     if (run && run.order) setStreak(run.order.streak);
     return;
   }
   const pv = R.preview(run, h.i, h.r, h.c);
   if (!pv) return;
   const o = run.order;
-  el.ghost.style.width = Math.min(100, ((o.score - pendingScore + pv.score) / o.target) * 100) + '%';
+  const now = o.score - pendingScore;
+  const after = now + pv.score;
+  el.ghost.style.width = Math.min(100, (after / o.target) * 100) + '%';
   el.ghost.classList.toggle('win', pv.completes);
+  el.proj.textContent = `→ ${fmt(after)}`;
   if (pv.lines.length) {
     setStreak(pv.streak, 'up');
-    if (!tallyJob) {
-      el.tally.classList.add('show', 'preview');
-      el.tally.innerHTML = tallyHtml(pv.seam, fmt(pv.chips), fmtMult(pv.mult), pv.completes ? '이걸로 주문 완료!' : `+${fmt(pv.score)}점`, pv.completes);
-    }
+    el.order.classList.add('previewing');
+    el.peek.innerHTML = `<span class="pk-seam">${SEAM_BY_ID[pv.seam].name}<small>${lvTag(pv.seam)}</small></span>
+      <span class="pk-calc"><span class="c">${fmt(pv.chips)}</span><i>×</i><span class="m">${fmtMult(pv.mult)}</span></span>
+      <span class="pk-gain">${pv.completes ? '주문 완료' : `+${fmt(pv.score)}`}</span>`;
     const key = `${h.i}:${h.r}:${h.c}`;
-    if (key !== lastHoverKey) { lastHoverKey = key; sfx.hover(pv.lines.length); }
+    if (key !== lastHoverKey) {
+      lastHoverKey = key;
+      if (pv.completes && !peekWin) { sfx.peekWin(); haptic([8, 40, 12]); } else sfx.hover(pv.lines.length);
+    }
   } else {
+    el.order.classList.remove('previewing');
     setStreak(o.streak, pv.streakBreaks ? 'warn' : '');
-    if (!tallyJob) el.tally.classList.remove('show', 'preview');
     lastHoverKey = null;
   }
+  el.order.classList.toggle('peek-win', pv.completes);
+  peekWin = pv.completes;
+  view.peekWin = pv.completes;
 }
 
 function tallyHtml(seam, chips, mult, label, win = false) {
@@ -682,6 +707,7 @@ function scoreEvent(ev) {
     return;
   }
   hint(null);
+  clearPeek();
   if (tallyJob) tallyJob.flush();
   pendingScore += result.score;
   const plan = view.clearLines(lines, ev.streak);

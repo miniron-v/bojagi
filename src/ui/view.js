@@ -367,7 +367,8 @@ export class View {
     // line glow under cells during preview
     if (d && d.valid && d.lines.length) {
       const pulse = 0.5 + 0.5 * Math.sin(now / 110);
-      g.fillStyle = `rgba(231,179,58,${0.18 + pulse * 0.15})`;
+      // gold for a clear, green when this clear would finish the order
+      g.fillStyle = this.peekWin ? `rgba(121,192,142,${0.25 + pulse * 0.2})` : `rgba(231,179,58,${0.18 + pulse * 0.15})`;
       for (const l of d.lines) {
         if (l.type === 'row') g.fillRect(bx, by + l.index * cell, cell * 8, cell);
         else g.fillRect(bx + l.index * cell, by, cell, cell * 8);

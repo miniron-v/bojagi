@@ -500,3 +500,41 @@ b, .num { font-variant-numeric: tabular-nums; }
 }
 
 .stage.dragging .hint { opacity: 0; transition-duration: .12s; }
+
+/* ---------- aiming forecast on the order card ---------- */
+.score-wrap { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; }
+.proj { font-family: var(--font-display); font-weight: 700; font-size: 18px; color: #e2b54a; opacity: 0; transform: translateX(-6px); transition: opacity .15s, transform .15s; white-space: nowrap; }
+.order.previewing .proj, .order.peek-win .proj { opacity: 1; transform: none; }
+.order.peek-win .proj { color: var(--good); }
+.bar .ghost { background: repeating-linear-gradient(-60deg, #e2b54a99 0 5px, #e2b54a55 5px 9px); background-size: 20px 100%; animation: ghostRun .6s linear infinite; }
+.bar .ghost.win { background: repeating-linear-gradient(-60deg, #79c08edd 0 5px, #79c08e77 5px 9px); background-size: 20px 100%; }
+@keyframes ghostRun { to { background-position: 20px 0; } }
+.bar { overflow: visible; }
+.bar .fill, .bar .ghost { border-radius: 2px; }
+.seal-stamp {
+  position: absolute; right: -6px; top: 50%; z-index: 3; padding: 2px 6px; border-radius: 3px;
+  background: var(--seal); color: var(--thread); font-family: var(--font-display); font-weight: 800; font-size: 12px; line-height: 1.2;
+  box-shadow: inset 0 0 0 1.5px #ffffff40, 0 3px 8px #0008; pointer-events: none;
+  opacity: 0; transform: translateY(-50%) scale(2) rotate(-14deg);
+}
+.order.peek-win .seal-stamp { animation: stampIn .28s cubic-bezier(.3,1.6,.5,1) forwards; }
+@keyframes stampIn { to { opacity: 1; transform: translateY(-50%) scale(1) rotate(-8deg); } }
+.order.peek-win { box-shadow: 0 0 0 2px var(--good), 0 0 26px #79c08e66, 0 6px 16px #0005; animation: winGlow .9s ease-in-out infinite; }
+@keyframes winGlow { 50% { box-shadow: 0 0 0 2px var(--good), 0 0 38px #79c08e99, 0 6px 16px #0005; } }
+
+.peek {
+  position: absolute; inset: -3px -3px; display: flex; z-index: 2; align-items: center; gap: 10px; padding: 0 10px;
+  border-radius: 3px; background: #10162c; outline: 1.5px dashed var(--stitch); outline-offset: -4px;
+  opacity: 0; transform: translateY(6px); transition: opacity .12s, transform .12s; pointer-events: none;
+}
+.order.previewing .peek { opacity: 1; transform: none; }
+.stats { position: relative; }
+.pk-seam { font-family: var(--font-display); font-weight: 700; font-size: 15px; white-space: nowrap; }
+.pk-seam small { margin-left: 4px; font-size: 11px; color: var(--gold); font-weight: 500; }
+.pk-calc { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-display); font-weight: 700; font-size: 15px; }
+.pk-calc .c { padding: 1px 7px; border-radius: 3px; background: var(--c-blue); }
+.pk-calc .m { padding: 1px 7px; border-radius: 3px; background: var(--seal); }
+.pk-calc i { font-style: normal; color: var(--muted); }
+.pk-gain { margin-left: auto; font-family: var(--font-display); font-weight: 800; font-size: 17px; color: var(--gold); white-space: nowrap; }
+.order.peek-win .pk-gain { color: var(--good); }
+.order.peek-win .peek { outline-color: #79c08ecc; }
