@@ -1,7 +1,6 @@
 // 조각누비: the run's keepsake. Every finished order adds one patch: its cloth is the colour the
 // player sewed most in that order, and it is quilted with the stitch of the seam they made most
-// (홈질 one running line, 겹누비 two, 세누비 dense lines, 납작누비 even flat lines, 십자수 a cross,
-// 오목누비 a ridged lattice, 마무리 a border). A failed order leaves a torn patch, a boss order a
+// (홈질 one running line, 겹누비 two, 세누비 dense lines, 십자수 a cross, 마무리 a border). A failed order leaves a torn patch, a boss order a
 // red knot in the corner. Rows are market days, so the quilt also reads as the map of the run.
 // It is stitched in on the reward sheet, laid out whole at the end, and kept in the 일지.
 import { paintPatch } from './art.js';
@@ -45,15 +44,11 @@ function quiltStitch(g, seam, w, h, color) {
   switch (seam) {
     case 'single': line(m, h / 2, w - m, h / 2); break;
     case 'double': line(m, h * 0.38, w - m, h * 0.38); line(m, h * 0.62, w - m, h * 0.62); break;
-    case 'mono': for (const k of [0.3, 0.5, 0.7]) line(m, h * k, w - m, h * k); break;
     case 'triple':
       g.setLineDash([Math.max(1.5, w * 0.05), Math.max(1, w * 0.04)]);
       for (let k = 0.24; k < 0.8; k += 0.1) line(m, h * k, w - m, h * k);
       break;
     case 'cross': line(m, h / 2, w - m, h / 2); line(w / 2, m, w / 2, h - m); break;
-    case 'twinMono':
-      for (const k of [0.35, 0.65]) { line(m, h * k, w - m, h * k); line(w * k, m, w * k, h - m); }
-      break;
     case 'perfect':
       g.strokeRect(m, m, w - m * 2, h - m * 2);
       g.strokeRect(m * 1.8, m * 1.8, w - m * 3.6, h - m * 3.6);

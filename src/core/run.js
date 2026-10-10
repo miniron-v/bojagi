@@ -336,7 +336,7 @@ export function place(run, i, r, c) {
     run.stats.clears += lines.length;
     run.stats.bestStreak = Math.max(run.stats.bestStreak, o.streak);
     if (ctx.perfect) run.stats.perfects += 1;
-    if (ctx.monoLines) run.stats.monos += 1; // clears that made 납작누비 (or better)
+    if (ctx.monoLines) run.stats.monos += 1; // clears with at least one one-colour line
     if (ctx.rowLines && ctx.colLines) run.stats.crosses += 1;
     if (lines.length >= 3) run.stats.triples += 1;
     const sc = (run.stats.seamCounts ||= {});
@@ -533,8 +533,11 @@ export function migrate(s) {
   if (!hadPoints) s.stats.points = s.history.reduce((a, h) => a + (h.score || 0), 0) + (s.order && s.phase === 'play' ? s.order.score || 0 : 0);
   s.locked ||= [];
   s.seams = { ...startingLevels(), ...(s.seams || {}) };
+  // 납작누비/오목누비 stopped being seams (colour became a bonus): drop their levels and stale offers
+  for (const id of Object.keys(s.seams)) if (!SEAM_IDS.includes(id)) delete s.seams[id];
   s.stats.topLevel = Math.max(s.stats.topLevel || 1, ...Object.values(s.seams));
   if (s.shop && !s.shop.patterns) s.shop.patterns = [];
+  if (s.shop) s.shop.patterns = s.shop.patterns.filter((p) => PATTERN_SEAMS.includes(p.id));
   return s;
 }
 

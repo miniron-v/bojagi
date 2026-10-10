@@ -97,8 +97,7 @@ export function seamIcon(id) {
     double: { rows: [2, 3] },
     triple: { rows: [2, 3, 4] },
     cross: { rows: [3], cols: [2] },
-    mono: { rows: [3], mono: ['var(--c-red)'] },
-    twinMono: { rows: [2, 3], mono: ['var(--c-blue)', 'var(--c-red)'] },
+    mono: { rows: [2, 3], mono: ['var(--c-blue)', 'var(--c-red)'] }, // the one-colour bonus, not a seam
     perfect: { rows: [3], empty: true },
   }[id] || { rows: [] };
   const rows = spec.rows || [];

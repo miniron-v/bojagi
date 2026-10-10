@@ -2,7 +2,7 @@
 // that shows them how the tool would pay off. Pure functions over the meta record.
 
 export const UNLOCKS = {
-  artisan: { need: '납작누비 8번', key: 'monos', goal: 8 },
+  artisan: { need: '한 색 줄 8번', key: 'monos', goal: 8 },
   hoop: { need: '십자수 3번', key: 'crosses', goal: 3 },
   norigae: { need: '마무리 1번', key: 'perfects', goal: 1 },
   grandma: { need: '장날 2까지 가기', key: 'bestDay', goal: 2 },

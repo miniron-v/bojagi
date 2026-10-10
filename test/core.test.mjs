@@ -58,10 +58,12 @@ test('scoring: plain placement', () => {
   assert.equal(r.score, 3);
 });
 
-test('scoring: single line, streak, mono seam', () => {
+test('scoring: single line, streak, one-colour line', () => {
   assert.equal(evaluate(baseCtx(), []).score, 70); // 홈질 (30 + 8×5) × 1
   assert.equal(evaluate(baseCtx({ streak: 3 }), []).score, 210); // ×(1+2)
-  assert.equal(evaluate(baseCtx({ monoLines: 1 }), []).score, 440); // 단색 (70+40) × 4
+  const mono = evaluate(baseCtx({ monoLines: 1 }), []);
+  assert.equal(mono.seam, 'single', 'colour never changes the seam');
+  assert.equal(mono.score, 140); // 홈질 70, every line one colour → ×2
   // 홈질 never levels
   assert.equal(evaluate(baseCtx({ levels: { single: 3 } }), []).score, 70);
 });
@@ -221,14 +223,26 @@ test('seams: ranking picks the highest hand', async () => {
   assert.equal(j({}), 'single');
   assert.equal(j({ lineCount: 2, rowLines: 2 }), 'double');
   assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1 }), 'cross');
-  // both cross and mono apply: rank decides (cross is the higher hand)
-  assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1 }), 'cross');
-  assert.equal(j({ lineCount: 2, rowLines: 2, monoLines: 1 }), 'mono');
-  assert.equal(j({ lineCount: 1, rowLines: 1, monoLines: 1 }), 'mono');
-  assert.equal(j({ lineCount: 3, rowLines: 3, monoLines: 1 }), 'triple');
-  assert.equal(j({ lineCount: 2, rowLines: 2, monoLines: 2 }), 'twinMono');
-  assert.equal(j({ perfect: true, monoLines: 1 }), 'perfect');
+  assert.equal(j({ lineCount: 3, rowLines: 3 }), 'triple');
+  assert.equal(j({ lineCount: 3, rowLines: 2, colLines: 1 }), 'triple');
+  assert.equal(j({ perfect: true }), 'perfect');
   assert.equal(j({ lineCount: 0 }), null);
+  // colour is a bonus on top of the shape, never a seam of its own (a leveled 겹누비 stays 겹누비)
+  assert.equal(j({ lineCount: 2, rowLines: 2, monoLines: 2 }), 'double');
+  assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1 }), 'cross');
+});
+
+test('seams: one-colour lines scale the whole score by their share, up to ×2', () => {
+  const pair = (monoLines) => evaluate(baseCtx({ lineCount: 2, rowLines: 2, monoLines, levels: { double: 5 },
+    cleared: Array.from({ length: 16 }, (_, k) => ({ r: k >> 3, c: k & 7, color: 'red' })) }), []);
+  const plain = pair(0);
+  assert.equal(plain.seam, 'double');
+  assert.equal(pair(1).score, Math.floor(plain.chips * plain.mult * 1.5));
+  assert.equal(pair(2).score, plain.score * 2, '겹누비 → 오목누비 doubles it');
+  assert.equal(pair(2).seam, 'double');
+});
+
+test('seams: 겹누비 base value', () => {
   const two = evaluate(baseCtx({ lineCount: 2, rowLines: 2, cleared: Array.from({ length: 16 }, (_, k) => ({ r: k >> 3, c: k & 7, color: 'red' })) }), []);
   assert.equal(two.score, (60 + 80) * 3);
 });

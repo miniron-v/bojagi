@@ -14,7 +14,7 @@ import { drawQuilt, shareText, stitchIn, patchCaption, keepsakeOf } from './quil
 import * as store from './store.js';
 import { lockedIds, isUnlocked, progress } from '../core/unlocks.js';
 import { recordRun as writeRecords, dailyStreakAlive } from '../core/records.js';
-import { fmt, fmtMult, kindName, dayName, bestDayLabel } from './format.js';
+import { fmt, fmtBig, fmtMult, kindName, dayName, bestDayLabel } from './format.js';
 import { SEAMS, SEAM_BY_ID, seamValue, PATTERN_PRICE } from '../core/seams.js';
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -81,13 +81,14 @@ if (meta.challengesV !== 2) {
 checkChallenges(meta); // records may have grown in a version without challenges
 
 /** Folds the lifetime record, plus the run in progress, into the challenges; announces new ones. */
-function noteChallenges(liveRun = null, delay = 0) {
+function noteChallenges(liveRun = null, delay = 0, announce = true) {
   const before = JSON.stringify(meta.challenges || {});
   const fresh = checkChallenges(meta, liveRecord(meta, liveRun));
   const into = liveRun;
   if (JSON.stringify(meta.challenges) !== before) store.saveMeta(meta);
   if (!fresh.length) return fresh;
   if (into) (into.achieved ||= []).push(...fresh.map((c) => c.id));
+  if (!announce) return fresh;
   setTimeout(() => {
     toast(`도전 과제 달성! ${fresh.map((c) => SKIN_BY_ID[c.skin].name).join(', ')} 천을 「공방 꾸미기」에서 받아요`, 3000);
     sfx.peekWin();
@@ -326,6 +327,9 @@ let modalClose = null;
  */
 function openModal(html, { center = false, close = null, closeButton = true } = {}) {
   closeTip();
+  // a toast from the moment before must not sit on top of the new sheet's heading
+  el.toast.classList.remove('show');
+  clearTimeout(toast.t);
   view.cancelDrag();
   el.modal.classList.toggle('center', center);
   el.sheet.innerHTML = `<div class="sheet-body">${html}</div>`;
@@ -645,7 +649,8 @@ function showPreview(h) {
   if (pv.lines.length) {
     setStreak(pv.streak, 'up');
     el.order.classList.add('previewing');
-    el.peek.innerHTML = `<span class="pk-seam">${SEAM_BY_ID[pv.seam].name}${shapeTag(pv.seam)}</span>
+    const mono = pv.steps.find((st) => st.src === 'mono');
+    el.peek.innerHTML = `<span class="pk-seam">${SEAM_BY_ID[pv.seam].name}${shapeTag(pv.seam)}</span>${mono ? `<em class="pk-mono">한 색 ×${fmtMult(mono.xmult)}</em>` : ''}
       <span class="pk-calc"><span class="c">${fmt(pv.chips)}</span><i>×</i><span class="m">${fmtMult(pv.mult)}</span></span>
       <span class="pk-gain">${pv.completes ? '주문 완료' : `+${fmt(pv.score)}`}</span>`;
     const key = `${h.i}:${h.r}:${h.c}`;
@@ -713,7 +718,7 @@ async function playEvents(events) {
       case 'tray': {
         view.setTray(run.tray, fitsOf());
         const t = run.tray.filter(Boolean);
-        if (t.length >= 2 && t.every((p) => p.color === t[0].color)) teachOnce('monoTray', '같은 색 조각들! 한 줄을 한 색으로 채우면 납작누비', 4000);
+        if (t.length >= 2 && t.every((p) => p.color === t[0].color)) teachOnce('monoTray', '같은 색 조각들! 지운 줄이 모두 한 색이면 배수 ×2 (오목누비)', 4000);
         break;
       }
       case 'discard':
@@ -823,6 +828,12 @@ function startTally(ev) {
         beat = 320;
         view.text(`연속 ${st.streak}`, boardMid.x, topY, { size: 20, color: '#e2b54a', dur: 900, rise: 20, compact: true });
         if (st.streak === 2) teachOnce('streak', '연달아 지우면 배수가 올라가요. 조각 3개 안에 다시 지우면 이어져요', 4000);
+      } else if (st.src === 'mono') {
+        mult *= st.xmult;
+        const full = st.monoLines === st.lineCount;
+        label = full ? `오목누비 · 모두 한 색 ×${fmtMult(st.xmult)}` : `한 색 ${st.monoLines}/${st.lineCount}줄 ×${fmtMult(st.xmult)}`;
+        beat = 380;
+        if (full) view.text('오목누비', boardMid.x, topY, { size: 22, color: '#e2b54a', dur: 1000, rise: 18, compact: true });
       } else if (st.src === 'boss') {
         mult *= st.xmult;
         label = `${R.BOSSES.strict.name} ×${st.xmult}`;
@@ -994,7 +1005,10 @@ function showSeams(back) {
       return `<div class="seam-row${sm.id === sig && lv > 1 ? ' hot' : ''}"><span class="ic">${seamIcon(sm.id)}</span><span class="nm">${sm.name} ${shapeTag(sm.id)}<small>${sm.fixed ? '레벨 없음' : `Lv.${lv}`}</small></span>
         <span class="val"><span class="c">${v.chips}</span> × <span class="m">${v.mult}</span></span>
         <span class="cond">${sm.how}${run && counts[sm.id] ? ` <span class="cnt">이번 판 ${counts[sm.id]}번</span>` : ''}</span></div>`;
-    }).join('')}</div>`;
+    }).join('')}
+      <div class="seam-row bonus"><span class="ic">${seamIcon('mono')}</span><span class="nm">한 색 줄 <small>모든 족보에</small></span>
+        <span class="val"><span class="m">×1~2</span></span>
+        <span class="cond">지운 줄 중 한 색으로 채운 줄의 비율만큼 배수가 커져요. 모두 한 색이면 ×2 (오목누비)</span></div></div>`;
   openModal(html, { close: () => (back ? back() : resumePhase()) });
 }
 
@@ -1015,7 +1029,7 @@ function showShop() {
     <div class="section-label"><span><b>바느질 본</b> 사면 그 족보가 한 단계 올라요</span><button class="link" id="open-seams">족보표</button></div>
     <div class="cards">${(sh.patterns || []).map((pt, i) => patternCard(pt, i)).join('')}</div>
     <div class="section-label"><span>내 도구 ${run.tools.length}/${MAX_TOOLS}</span><span>눌러서 팔기</span></div>
-    <div class="owned" id="owned"></div>
+    <div class="shop-owned" id="owned"></div>
     <div class="actions"><div class="next-order"><small>다음 주문</small> ${nextOrderPreview()}</div><button class="btn btn-seal" id="leave" data-autofocus>주문 받으러 가기</button></div>`;
   const s = openModal(html);
   const owned = $('#owned', s);
@@ -1083,7 +1097,7 @@ function recordRun(victory) {
   run.keepsakeAt = ks.at;
   meta.quilts.unshift(ks);
   meta.quilts = meta.quilts.slice(0, 8);
-  noteChallenges(run, 0);
+  noteChallenges(run, 0, false); // the end sheet itself lists what was achieved
   endInfo.achieved = (run.achieved || []).map((id) => CHALLENGES.find((c) => c.id === id)).filter(Boolean);
   endInfo.claims = claimable(meta);
   store.saveMeta(meta);
@@ -1093,16 +1107,16 @@ function showEnd(victory, ev) {
   if (!endInfo) endInfo = { newDay: false, newHand: false };
   const st = run.stats;
   const grid = `<div class="stat-grid">
-    <div><small>이번 판 점수</small><b>${fmt(st.points || 0)}</b>${endInfo.newPoints ? '<span class="new">신기록</span>' : ''}</div>
+    <div><small>이번 판 점수</small><b>${fmtBig(st.points || 0)}</b>${endInfo.newPoints ? '<span class="new">신기록</span>' : ''}</div>
     <div><small>도달</small><b>${dayLabel()}</b>${endInfo.newDay ? '<span class="new">신기록</span>' : ''}</div>
     <div><small>완료한 주문</small><b>${st.orders}</b></div>
-    <div><small>최고 한 땀</small><b>${fmt(st.bestHand)}</b>${endInfo.newHand ? '<span class="new">신기록</span>' : ''}</div></div>`;
+    <div><small>최고 한 땀</small><b>${fmtBig(st.bestHand)}</b>${endInfo.newHand ? '<span class="new">신기록</span>' : ''}</div></div>`;
   const unlockedNote = endInfo.unlocked && endInfo.unlocked.length
-    ? `<div class="unlock-note">${endInfo.unlocked.map((id) => `<span class="art">${toolArt(TOOLS[id])}</span>`).join('')}<div><b>다음 판부터 장터에 나와요</b><span>${endInfo.unlocked.map((id) => TOOLS[id].name).join(', ')}</span></div></div>`
+    ? `<div class="unlock-note"><span class="arts">${endInfo.unlocked.map((id) => `<span class="art">${toolArt(TOOLS[id])}</span>`).join('')}</span><div><b>다음 판부터 장터에 나와요</b><span>${endInfo.unlocked.map((id) => TOOLS[id].name).join(', ')}</span></div></div>`
     : '';
   const shown = endInfo.achieved && endInfo.achieved.length ? endInfo.achieved : endInfo.claims || [];
   const skinNote = shown.length
-    ? `<div class="unlock-note">${shown.map((c) => `<span class="art">${skinSwatch(SKIN_BY_ID[c.skin], true)}</span>`).join('')}<div><b>${endInfo.achieved && endInfo.achieved.length ? '이번 판에 이룬 도전 과제' : '받을 보상이 있어요'}</b><span>${shown.map((c) => SKIN_BY_ID[c.skin].name).join(', ')} 천 · 「공방 꾸미기」에서 받아요</span></div></div>`
+    ? `<div class="unlock-note"><span class="arts">${shown.map((c) => `<span class="art">${skinSwatch(SKIN_BY_ID[c.skin], true)}</span>`).join('')}</span><div><b>${endInfo.achieved && endInfo.achieved.length ? '이번 판에 이룬 도전 과제' : '받을 보상이 있어요'}</b><span>${shown.map((c) => SKIN_BY_ID[c.skin].name).join(', ')} 천 · 「공방 꾸미기」에서 받아요</span></div></div>`
     : '';
   const quilt = `<figure class="quilt"><canvas id="quilt" aria-label="이번 판의 조각누비"></canvas><figcaption>이번 판의 조각누비<br><span>주문마다 한 조각 · 일지에 보관돼요</span></figcaption></figure>`;
   const share = run.mode === 'daily' ? '<button class="btn btn-ghost" id="share">결과 복사하기</button>' : '';
@@ -1348,7 +1362,8 @@ function showHow(back) {
     <div class="how">
       <p><b>조각 놓기</b> — 아래 조각을 끌어 수틀에 놓아요. 놓을 때마다 남은 조각이 하나씩 줄어요.</p>
       <p><b>줄 누비기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 누벼지고 점수가 나요.</p>
-      <p><b>바느질 족보</b> — 지운 모양에 따라 기법이 정해져요. 홈질(한 줄), 겹누비(같은 방향 두 줄), 십자수(가로+세로), 납작누비(한 색으로 채운 줄), 세누비(세 줄 이상), 오목누비(한 색 줄 둘 이상), 마무리(판을 다 비움). 기법마다 점과 배수가 정해져 있어요.</p>
+      <p><b>바느질 족보</b> — 지운 모양에 따라 기법이 정해져요. 홈질(한 줄), 겹누비(같은 방향 두 줄), 십자수(가로+세로), 세누비(세 줄 이상), 마무리(판을 다 비움). 기법마다 점과 배수가 정해져 있어요.</p>
+      <p><b>한 색 줄</b> — 한 줄을 한 가지 색으로 채워 지우면 배수가 커져요. 지운 줄이 모두 한 색이면 ×2(오목누비), 두 줄 중 하나면 ×1.5.</p>
       <p><b>점 × 배수</b> — 족보의 점에 지운 칸마다 5를 더하고, 연달아 지우면 배수가 올라요. 도구가 점과 배수를 더 키워요.</p>
       <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 놓을 데가 없으면 「조각 바꾸기」로 트레이를 새로 받아요.</p>
       <p><b>장터</b> — 품삯으로 바느질 도구와 바느질 본을 사요. 본은 족보 레벨을 올려 줘요. 한 족보를 키워 빌드를 만들어 보세요. 돈을 모아 두면 ${R.INTEREST_PER}냥마다 이자가 1냥(최대 ${R.INTEREST_CAP}냥) 붙어요.</p>
@@ -1394,10 +1409,10 @@ function showRecords() {
       <div><small>지은 판</small><b>${meta.runs}</b></div>
       <div><small>완성한 누비</small><b>${meta.wins}</b></div>
       <div><small>최고 도달</small><b>${meta.bestDay ? bestDayLabel(meta.bestDay) : '-'}</b></div>
-      <div><small>최고 점수 (한 판)</small><b>${fmt(meta.bestPoints || 0)}</b></div>
-      <div><small>누적 점수</small><b>${fmt(meta.points || 0)}</b></div>
-      <div><small>최고 한 땀</small><b>${fmt(meta.bestHand)}</b></div>
-      <div><small>누빈 줄</small><b>${fmt(meta.clears)}</b></div>
+      <div><small>최고 점수 (한 판)</small><b>${fmtBig(meta.bestPoints || 0)}</b></div>
+      <div><small>누적 점수</small><b>${fmtBig(meta.points || 0)}</b></div>
+      <div><small>최고 한 땀</small><b>${fmtBig(meta.bestHand)}</b></div>
+      <div><small>누빈 줄</small><b>${fmtBig(meta.clears)}</b></div>
       <div><small>최고 족보 레벨</small><b>Lv.${meta.bestLevel || 1}</b></div>
     </div>
     ${(meta.quilts || []).length ? `<div class="section-label"><span>누비 보관함</span><span>최근 ${meta.quilts.length}판</span></div>
@@ -1473,4 +1488,8 @@ if (hot && hot.ready) hot.ready(boot);
 else boot(hot && hot.data ? hot.data : {});
 
 // handle for automated tests
-window.__bojagi = { get run() { return run; }, view, R, shapes: SHAPE_BY_ID };
+// test hooks for tools/e2e.mjs, tools/states.mjs and tools/ui-audit.mjs
+window.__bojagi = {
+  get run() { return run; }, view, R, shapes: SHAPE_BY_ID,
+  ui: { continueRun, recordRun, showEnd, showReward, showShop, showGift, showIntro, showCodex, showRecords, showSkins, showSeams, showPause, showHow, titleScreen },
+};

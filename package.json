@@ -9,7 +9,8 @@
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "build": "node tools/build.mjs",
-    "sim": "node tools/simulate.mjs"
+    "sim": "node tools/simulate.mjs",
+    "audit:ui": "node tools/ui-audit.mjs"
   },
   "keywords": [],
   "author": "",

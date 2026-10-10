@@ -110,8 +110,8 @@ const defs = [
   },
   {
     id: 'artisan', name: '장인의 손', rarity: 3, price: 8, art: 'hand',
-    desc: () => '납작누비·오목누비로 지울 때 배수 ×2.5',
-    score: (ctx) => (ctx.seam === 'mono' || ctx.seam === 'twinMono' ? [{ xmult: 2.5 }] : []),
+    desc: () => '한 색 줄을 지울 때 배수 ×2',
+    score: (ctx) => (ctx.monoLines ? [{ xmult: 2 }] : []),
   },
   {
     id: 'stamp', name: '장인 도장', rarity: 2, price: 6, art: 'stamp',

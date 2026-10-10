@@ -1,7 +1,7 @@
 // Chips × Mult evaluation for one placement. Returns a step-by-step breakdown so the UI
 // can replay it (Balatro-style tally) and the final integer score.
 import { TOOLS } from './tools.js';
-import { judgeSeam, seamValue } from './seams.js';
+import { judgeSeam, seamValue, monoFactor } from './seams.js';
 
 export const CELL_CHIPS = 5;
 
@@ -9,7 +9,8 @@ export const CELL_CHIPS = 5;
  * ctx: { lineCount, rowLines, colLines, monoLines, cleared, placedCells, streak,
  *        clearIndex, perfect, emptyAfter, coins, discardsLeft, boss, levels, topSeam, patterns }
  * tools: tool instances (slot order)
- * Order: seam base → each cleared cell → streak → tool chips → tool +mult → tool ×mult → boss.
+ * Order: seam base → each cleared cell → streak → tool chips → tool +mult → tool ×mult
+ *        → one-colour lines (×1 to ×2, see monoFactor) → boss.
  */
 export function evaluate(ctx, tools) {
   const steps = [];
@@ -49,6 +50,12 @@ export function evaluate(ctx, tools) {
   for (const e of effects) if (e.chips) { chips += e.chips; steps.push(e); }
   for (const e of effects) if (e.mult) { mult += e.mult; steps.push(e); }
   for (const e of effects) if (e.xmult) { mult *= e.xmult; steps.push(e); }
+
+  const mx = monoFactor(ctx);
+  if (mx > 1) {
+    mult *= mx;
+    steps.push({ src: 'mono', xmult: mx, monoLines: ctx.monoLines, lineCount: ctx.lineCount });
+  }
 
   if (ctx.boss === 'strict') {
     mult *= 0.5;

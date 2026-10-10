@@ -26,6 +26,9 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # every screen at seven phone sizes with stress data; a broken layout blocks the deploy
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run audit:ui
       - name: Publish to gh-pages
         run: |
           mkdir site
