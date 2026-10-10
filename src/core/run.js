@@ -104,6 +104,8 @@ export function emptyStats() {
   return {
     bestHand: 0, clears: 0, perfects: 0, orders: 0, placed: 0, bestStreak: 0, monos: 0, crosses: 0, triples: 0,
     seamCounts: {}, patterns: 0,
+    points: 0, // every point actually sewn this run, overshoot included
+    topLevel: 1, // highest seam level reached this run
   };
 }
 
@@ -165,6 +167,7 @@ export function prepareOrder(run) {
     clears: 0,
     stuck: false,
     colors: {},
+    seams: {}, // clears per seam this order: the keepsake patch takes the commonest one's stitch
   };
   run.board = emptyBoard();
   if (boss === 'knots') {
@@ -233,8 +236,18 @@ function dominantColor(o) {
   return best || 'white';
 }
 
+/** The seam made most often in an order (ties go to the higher-ranked one); null if nothing was cleared. */
+function dominantSeam(o) {
+  let best = null;
+  for (const id of SEAM_IDS) if ((o.seams?.[id] || 0) > (o.seams?.[best] || 0)) best = id;
+  return best;
+}
+
 function logOrder(run, ok) {
-  (run.history ||= []).push({ kind: run.order.kind, ok, color: dominantColor(run.order), score: run.order.score });
+  (run.history ||= []).push({
+    kind: run.order.kind, ok, color: dominantColor(run.order), seam: dominantSeam(run.order),
+    score: run.order.score, target: run.order.target, boss: run.order.boss || null,
+  });
 }
 
 function failOrder(run, reason) {
@@ -328,6 +341,8 @@ export function place(run, i, r, c) {
     if (lines.length >= 3) run.stats.triples += 1;
     const sc = (run.stats.seamCounts ||= {});
     sc[ctx.seam] = (sc[ctx.seam] || 0) + 1;
+    o.seams ||= {};
+    o.seams[ctx.seam] = (o.seams[ctx.seam] || 0) + 1;
     run.tools.forEach((t, slot) => {
       const def = TOOLS[t.id];
       if (def.after && def.after(ctx, t)) lateGrow.push({ type: 'toolGrow', slot, late: true });
@@ -339,6 +354,7 @@ export function place(run, i, r, c) {
 
   run.board = after;
   o.score += result.score;
+  run.stats.points = (run.stats.points || 0) + result.score;
   run.stats.bestHand = Math.max(run.stats.bestHand, result.score);
   events.push({
     type: 'score', lines, cleared, result, streak: o.streak, perfect: ctx.perfect,
@@ -447,6 +463,7 @@ export function buyPattern(run, i) {
   run.coins -= PATTERN_PRICE;
   offer.sold = true;
   run.seams[offer.id] = (run.seams[offer.id] || 1) + 1;
+  run.stats.topLevel = Math.max(run.stats.topLevel || 1, run.seams[offer.id]);
   run.stats.patterns = (run.stats.patterns || 0) + 1;
   const grown = [];
   run.tools.forEach((t, slot) => {
@@ -509,10 +526,14 @@ export function continueEndless(run) {
 /** Fills fields added after a save was written so older saves keep working. */
 export function migrate(s) {
   s.history ||= [];
-  if (s.order) s.order.colors ||= {};
+  if (s.order) { s.order.colors ||= {}; s.order.seams ||= {}; }
+  const hadPoints = s.stats && typeof s.stats.points === 'number';
   s.stats = { ...emptyStats(), ...(s.stats || {}) };
+  // saves from before run points: rebuild them from the orders sewn so far
+  if (!hadPoints) s.stats.points = s.history.reduce((a, h) => a + (h.score || 0), 0) + (s.order && s.phase === 'play' ? s.order.score || 0 : 0);
   s.locked ||= [];
   s.seams = { ...startingLevels(), ...(s.seams || {}) };
+  s.stats.topLevel = Math.max(s.stats.topLevel || 1, ...Object.values(s.seams));
   if (s.shop && !s.shop.patterns) s.shop.patterns = [];
   return s;
 }

@@ -7,10 +7,10 @@ import { View } from './view.js';
 import { toolArt, glyph, seamIcon } from './icons.js';
 import { clothTexture } from './art.js';
 import { SKINS, SKIN_BY_ID, skinUnlocked, resolveSkin, applySkinVars } from './skins.js';
-import { CHALLENGES, checkChallenges, claimChallenge, claimable, challengeState, challengeForSkin } from '../core/challenges.js';
+import { CHALLENGES, checkChallenges, claimChallenge, claimable, challengeState, challengeForSkin, liveRecord } from '../core/challenges.js';
 import { sfx, unlock, setEnabled, resumeAudio, setAmbient } from './audio.js';
 import { createTitleArt } from './title-art.js';
-import { drawQuilt, shareText } from './quilt.js';
+import { drawQuilt, shareText, stitchIn, patchCaption, keepsakeOf } from './quilt.js';
 import * as store from './store.js';
 import { lockedIds, isUnlocked, progress } from '../core/unlocks.js';
 import { recordRun as writeRecords, dailyStreakAlive } from '../core/records.js';
@@ -41,6 +41,7 @@ let tallyJob = null;
 let lastHoverKey = null;
 let endInfo = null;
 let pendingHint = null;
+let previewClose = null; // set while a skin preview is open
 let patchWarned = false;
 const speed = () => (settings.fast ? 0.55 : 1);
 
@@ -69,21 +70,20 @@ function applySkin() {
 }
 applySkin();
 delete meta.skinsSeen; // from the earlier milestone-unlock version
-// players from before challenges: credit the feats their best-of-run records already prove
-if (!meta.challengesSeeded) {
-  checkChallenges(meta, {
-    bestStreak: meta.bestStreak || 0,
-    bestHand: meta.bestHand || 0,
-    orders: meta.wins ? 12 : (meta.bestDay || 0) >= 4 ? 9 : 0,
-  });
-  meta.challengesSeeded = true;
+// challenges became long-term goals (v2): earlier one-run feats and their rewards are reset
+if (meta.challengesV !== 2) {
+  meta.challenges = {};
+  meta.challengesV = 2;
+  delete meta.challengesSeeded;
   store.saveMeta(meta);
 }
+checkChallenges(meta); // records may have grown in a version without challenges
 
-/** Folds a run's stats into the challenges; announces any completed just now. */
-function noteChallenges(stats, delay = 0, into = null) {
+/** Folds the lifetime record, plus the run in progress, into the challenges; announces new ones. */
+function noteChallenges(liveRun = null, delay = 0) {
   const before = JSON.stringify(meta.challenges || {});
-  const fresh = checkChallenges(meta, stats);
+  const fresh = checkChallenges(meta, liveRecord(meta, liveRun));
+  const into = liveRun;
   if (JSON.stringify(meta.challenges) !== before) store.saveMeta(meta);
   if (!fresh.length) return fresh;
   if (into) (into.achieved ||= []).push(...fresh.map((c) => c.id));
@@ -423,7 +423,7 @@ function titleScreen() {
   refreshClaimBadge();
   $('#codex-count').textContent = `${meta.discovered.length}/${TOOL_IDS.length}`;
   $('#best-line').textContent = meta.runs
-    ? `최고 ${bestDayLabel(meta.bestDay)} · 최고 한 땀 ${fmt(meta.bestHand)} · 완성 ${meta.wins}회`
+    ? `${meta.bestPoints ? `최고 점수 ${fmt(meta.bestPoints)} · ` : `최고 한 땀 ${fmt(meta.bestHand)} · `}최고 ${bestDayLabel(meta.bestDay)} · 완성 ${meta.wins}회`
     : '';
   titleArt.start();
 }
@@ -613,7 +613,7 @@ view.handlers.drop = (i, r, c, piece) => {
   const res = R.place(run, i, r, c);
   if (!res.ok) return false;
   showPreview(null);
-  noteChallenges(run.stats, 700, run);
+  noteChallenges(run, 700);
   if (res.events.some((e) => e.type === 'fail')) recordRun(false);
   persist();
   playEvents(res.events);
@@ -948,12 +948,17 @@ async function failSequence(ev) {
 // ---------- reward / shop ----------
 function showReward() {
   const rw = run.reward;
+  const last = run.history[run.history.length - 1];
   const html = `<div class="eyebrow">${dayLabel()} · ${kindName(run.order.kind)}</div><h2>품삯을 받았어요</h2>
+    <div class="keepsake"><canvas id="ks" aria-label="지금까지의 조각누비"></canvas>
+      <div><b>조각누비에 한 조각</b><span>${patchCaption(last)}</span><small>주문마다 가장 많이 쓴 색과 가장 많이 놓은 족보로 한 조각씩 누벼요</small></div></div>
     <div class="reward-list">${rw.lines.map((l) => `<div class="reward-line"><span>${l.label}</span><b>+${l.coins}</b></div>`).join('')}</div>
     <div class="reward-total"><span>합계</span><b>${rw.total}냥</b></div>
     <div class="actions"><button class="btn btn-gold" id="collect" data-autofocus>받기</button></div>`;
   const s = openModal(html);
   s.querySelectorAll('.reward-line').forEach((n, i) => setTimeout(() => { n.classList.add('in'); sfx.coin(i); }, 120 + i * 140));
+  const ks = $('#ks', s);
+  requestAnimationFrame(() => stitchIn(ks, run.history, run.history.length - 1, () => { sfx.stitch(2, 0); haptic(8); }, speed()));
   on(s, '#collect', once(() => {
     const ev = R.collectReward(run);
     sfx.buy();
@@ -1080,7 +1085,14 @@ function showShop() {
 /** Writes records immediately (before any animation) so closing the app can't lose them. */
 function recordRun(victory) {
   endInfo = writeRecords(meta, run, { victory });
-  noteChallenges(run.stats, 0, run);
+  // the run's quilt goes into the 일지 (a run that continues into the night replaces its own entry)
+  const ks = keepsakeOf(run, victory || run.endless);
+  meta.quilts = (meta.quilts || []).filter((q) => q.at !== run.keepsakeAt);
+  if (run.keepsakeAt) ks.at = run.keepsakeAt;
+  run.keepsakeAt = ks.at;
+  meta.quilts.unshift(ks);
+  meta.quilts = meta.quilts.slice(0, 8);
+  noteChallenges(run, 0);
   endInfo.achieved = (run.achieved || []).map((id) => CHALLENGES.find((c) => c.id === id)).filter(Boolean);
   endInfo.claims = claimable(meta);
   store.saveMeta(meta);
@@ -1090,10 +1102,10 @@ function showEnd(victory, ev) {
   if (!endInfo) endInfo = { newDay: false, newHand: false };
   const st = run.stats;
   const grid = `<div class="stat-grid">
+    <div><small>이번 판 점수</small><b>${fmt(st.points || 0)}</b>${endInfo.newPoints ? '<span class="new">신기록</span>' : ''}</div>
     <div><small>도달</small><b>${dayLabel()}</b>${endInfo.newDay ? '<span class="new">신기록</span>' : ''}</div>
     <div><small>완료한 주문</small><b>${st.orders}</b></div>
-    <div><small>최고 한 땀</small><b>${fmt(st.bestHand)}</b>${endInfo.newHand ? '<span class="new">신기록</span>' : ''}</div>
-    <div><small>최고 연속</small><b>${st.bestStreak}</b></div></div>`;
+    <div><small>최고 한 땀</small><b>${fmt(st.bestHand)}</b>${endInfo.newHand ? '<span class="new">신기록</span>' : ''}</div></div>`;
   const unlockedNote = endInfo.unlocked && endInfo.unlocked.length
     ? `<div class="unlock-note">${endInfo.unlocked.map((id) => `<span class="art">${toolArt(TOOLS[id])}</span>`).join('')}<div><b>새 도구가 장터에 나와요</b><span>${endInfo.unlocked.map((id) => TOOLS[id].name).join(', ')}</span></div></div>`
     : '';
@@ -1101,7 +1113,7 @@ function showEnd(victory, ev) {
   const skinNote = shown.length
     ? `<div class="unlock-note">${shown.map((c) => `<span class="art">${skinSwatch(SKIN_BY_ID[c.skin], true)}</span>`).join('')}<div><b>${endInfo.achieved && endInfo.achieved.length ? '이번 판에 이룬 도전 과제' : '받을 보상이 있어요'}</b><span>${shown.map((c) => c.name).join(', ')} · 「공방 꾸미기」에서 보상을 받아요</span></div></div>`
     : '';
-  const quilt = `<figure class="quilt"><canvas id="quilt" aria-label="이번 판의 조각누비"></canvas><figcaption>이번 판의 조각누비</figcaption></figure>`;
+  const quilt = `<figure class="quilt"><canvas id="quilt" aria-label="이번 판의 조각누비"></canvas><figcaption>이번 판의 조각누비<br><span>주문마다 한 조각 · 일지에 보관돼요</span></figcaption></figure>`;
   const share = run.mode === 'daily' ? '<button class="btn btn-ghost" id="share">결과 복사하기</button>' : '';
   let html;
   if (victory) {
@@ -1122,7 +1134,7 @@ function showEnd(victory, ev) {
       <button class="btn btn-ghost" id="home">처음으로</button></div>`;
   }
   const s = openModal(html, { center: true });
-  requestAnimationFrame(() => drawQuilt($('#quilt', s), run));
+  requestAnimationFrame(() => drawQuilt($('#quilt', s), run.history));
   on(s, '#again', once(() => { endInfo = null; startRun(run.mode); }));
   on(s, '#home', once(() => { endInfo = null; titleScreen(); }));
   on(s, '#endless', once(() => {
@@ -1197,73 +1209,143 @@ function skinSwatch(k, mini = false) {
     <i class="sw-panel"></i><i class="sw-hoop"><i></i><i></i><i></i><i></i></i></span>`;
 }
 
-function skinCard(k, current) {
-  const open = skinUnlocked(k, meta);
-  const c = !open && challengeForSkin(k.id);
-  return `<button class="skin-card${open ? '' : ' locked'}" data-skin="${k.id}" aria-pressed="${k.id === current}" ${open ? '' : 'disabled'}>
-    ${skinSwatch(k)}<b>${k.name}</b><span>${open ? k.note : `도전 「${c.name}」 보상`}</span></button>`;
+/** Where a skin stands for this player: worn, owned, reward waiting, or still a challenge. */
+function skinStatus(k) {
+  if (skinUnlocked(k, meta)) return resolveSkin(settings.skin, meta).id === k.id ? 'worn' : 'owned';
+  const c = challengeForSkin(k.id);
+  return challengeState(meta, c.id).done ? 'ready' : 'locked';
 }
 
-function challengeRow(c) {
-  const st = challengeState(meta, c.id);
-  const k = SKIN_BY_ID[c.skin];
-  const state = st.claimed ? 'claimed' : st.done ? 'ready' : 'open';
-  const right = state === 'ready'
-    ? `<button class="btn btn-small btn-gold claim" data-claim="${c.id}">받기</button>`
-    : state === 'claimed' ? '<span class="ch-tag">받음</span>'
-      : `<span class="ch-num">${fmt(st.have)}<small>/${fmt(st.goal)}</small></span>`;
-  return `<div class="challenge ch-${state}"><span class="art">${skinSwatch(k, true)}</span>
-    <span class="ch-text"><b>${c.name}</b><span>${c.need}</span>
-    ${state === 'open' ? `<span class="ch-bar"><i style="width:${(100 * st.have) / st.goal}%"></i></span>` : `<span class="ch-reward">보상: ${k.name}</span>`}</span>${right}</div>`;
+/** One row per cloth: picture (tap to try it on), name, its challenge and progress, one action. */
+function skinRow(k) {
+  const state = skinStatus(k);
+  const c = challengeForSkin(k.id);
+  const st = c && challengeState(meta, c.id);
+  const goal = c && state !== 'worn' && state !== 'owned'
+    ? `<span class="sr-goal">「${c.name}」 ${c.need}</span>${state === 'locked' ? `<span class="ch-bar"><i style="width:${(100 * st.have) / st.goal}%"></i></span><small class="sr-num">${fmt(st.have)} / ${fmt(st.goal)}</small>` : ''}`
+    : `<span class="sr-note">${k.note}</span>`;
+  const act = state === 'worn' ? '<span class="ch-tag on">쓰는 중</span>'
+    : state === 'owned' ? `<button class="btn btn-small" data-wear="${k.id}">쓰기</button>`
+      : state === 'ready' ? `<button class="btn btn-small btn-gold" data-claim="${c.id}">받기</button>`
+        : `<button class="btn btn-small btn-ghost" data-preview="${k.id}">미리 보기</button>`;
+  return `<div class="skin-row sr-${state}" data-skin="${k.id}">
+    <button class="sr-pic" data-preview="${k.id}" aria-label="${k.name} 미리 보기">${skinSwatch(k)}</button>
+    <div class="sr-text"><b>${k.name}${c && c.hard ? '<em class="hard">어려움</em>' : ''}</b>${goal}</div>
+    <div class="sr-act">${act}</div></div>`;
 }
 
-/** Challenges with their skin rewards, then the skin picker; from the title also the settings. */
+/** Cloths and the challenges that earn them; from the title it also carries the settings. */
 function showSkins(back, withSettings = true) {
-  const current = resolveSkin(settings.skin, meta).id;
+  noteChallenges(run && run.phase !== 'over' ? run : null); // progress as of this moment
   const doneN = CHALLENGES.filter((c) => challengeState(meta, c.id).claimed).length; // rewards taken
   const html = `<div class="eyebrow">천과 수틀</div><h2>공방 꾸미기</h2>
-    <p class="lead">도전 과제를 이루면 새 천을 받아요. 한 판 안에서 이뤄야 해요. 조각 색과 점수는 어느 천에서나 같아요.</p>
-    <div class="section-label"><span>도전 과제</span><span>받은 보상 ${doneN}/${CHALLENGES.length}</span></div>
-    <div class="challenges">${CHALLENGES.map(challengeRow).join('')}</div>
-    <div class="section-label"><span>천 고르기</span></div>
-    <div class="skin-grid">${SKINS.map((k) => skinCard(k, current)).join('')}</div>
+    <p class="lead">오래, 잘 지을수록 새 천을 얻어요. 그림을 누르면 아직 없는 천도 미리 입혀 볼 수 있어요.</p>
+    <div class="section-label"><span>천</span><span>받은 천 ${doneN}/${CHALLENGES.length}</span></div>
+    <div class="skin-list">${SKINS.map(skinRow).join('')}</div>
     ${withSettings ? `<div class="section-label"><span>설정</span></div>${switchRow('sw-sound', '소리', settings.sound)}${switchRow('sw-ambient', '배경 가락', settings.ambient !== false)}${switchRow('sw-haptics', '진동', settings.haptics)}${switchRow('sw-fast', '빠른 연출', settings.fast)}` : ''}
     <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>다 됐어요</button></div>`;
   const done = () => { refreshClaimBadge(); return back ? back() : closeModal(); };
   const s = openModal(html, { close: done });
   if (withSettings) bindSwitches(s);
+  const reopen = () => showSkins(back, withSettings);
+  const refresh = (id, cls) => {
+    const row = s.querySelector(`.skin-row[data-skin="${id}"]`);
+    row.outerHTML = skinRow(SKIN_BY_ID[id]);
+    if (cls) s.querySelector(`.skin-row[data-skin="${id}"]`).classList.add(cls);
+  };
   const wear = (id) => {
+    const prev = resolveSkin(settings.skin, meta).id;
     settings.skin = id;
     store.saveSettings(settings);
     applySkin();
-    s.querySelectorAll('.skin-card').forEach((c) => c.setAttribute('aria-pressed', c.dataset.skin === id));
+    refresh(prev);
+    refresh(id);
   };
-  s.querySelectorAll('.skin-card:not([disabled])').forEach((n) => n.addEventListener('click', () => {
-    wear(n.dataset.skin);
+  // one delegated listener: rows are re-rendered in place
+  s.querySelector('.skin-list').addEventListener('click', (e) => {
+    const n = e.target.closest('[data-wear],[data-claim],[data-preview]');
+    if (!n) return;
     unlock();
-    sfx.ui();
-    haptic(10);
-  }));
-  s.querySelectorAll('[data-claim]').forEach((n) => n.addEventListener('click', () => {
+    if (n.dataset.wear) { wear(n.dataset.wear); sfx.ui(); haptic(10); return; }
+    if (n.dataset.preview) { sfx.ui(); previewSkins(n.dataset.preview, reopen); return; }
     const c = CHALLENGES.find((x) => x.id === n.dataset.claim);
     if (!claimChallenge(meta, c.id)) return;
     store.saveMeta(meta);
-    unlock();
     sfx.perfect();
     haptic([15, 50, 15]);
-    // swap in the new row and card, then put the new cloth on straight away
-    const row = n.closest('.challenge');
-    row.outerHTML = challengeRow(c);
-    const card = s.querySelector(`.skin-card[data-skin="${c.skin}"]`);
-    card.outerHTML = skinCard(SKIN_BY_ID[c.skin], c.skin);
-    const fresh = s.querySelector(`.skin-card[data-skin="${c.skin}"]`);
-    fresh.classList.add('just');
-    fresh.addEventListener('click', () => { wear(c.skin); unlock(); sfx.ui(); haptic(10); });
     wear(c.skin);
-    s.querySelector('.section-label span:last-child').textContent = `받은 보상 ${CHALLENGES.filter((x) => challengeState(meta, x.id).claimed).length}/${CHALLENGES.length}`;
+    refresh(c.skin, 'just');
+    s.querySelector('.section-label span:last-child').textContent = `받은 천 ${CHALLENGES.filter((x) => challengeState(meta, x.id).claimed).length}/${CHALLENGES.length}`;
     toast(`${SKIN_BY_ID[c.skin].name} 천을 받았어요`);
-  }));
+  });
   on(s, '#back', done);
+}
+
+/**
+ * 입어 보기: the sheet steps aside and the whole screen behind it (the title, or the board when
+ * opened from the pause menu) takes the cloth. A bar at the bottom names it, says how to earn it,
+ * and steps through every cloth with ‹ › or a swipe. Nothing is saved until the player wears one.
+ */
+function previewSkins(startId, reopen) {
+  closeModal();
+  let i = SKINS.findIndex((k) => k.id === startId);
+  const layer = document.createElement('div');
+  layer.className = 'preview-layer';
+  layer.innerHTML = `<div class="preview-bar silk" role="dialog" aria-label="천 미리 보기">
+    <button class="pv-nav" data-d="-1" aria-label="이전 천">‹</button><div class="pv-info"></div><button class="pv-nav" data-d="1" aria-label="다음 천">›</button>
+    <div class="pv-actions"></div></div>`;
+  app.appendChild(layer);
+  // the screen behind is only a picture while previewing
+  const behind = [$('#title'), $('#game')];
+  behind.forEach((n) => n.setAttribute('inert', ''));
+  previewClose = () => close();
+  const show = () => {
+    const k = SKINS[i];
+    applySkinVars(document.documentElement, k);
+    clothCache[k.id] ||= `url(${clothTexture(k.cloth)})`;
+    app.style.setProperty('--cloth', clothCache[k.id]);
+    view.setSkin(k);
+    if (themeMeta) themeMeta.setAttribute('content', k.ground);
+    const state = skinStatus(k);
+    const c = challengeForSkin(k.id);
+    const st = c && challengeState(meta, c.id);
+    $('.pv-info', layer).innerHTML = `<span class="pv-tag">미리 보는 중 ${i + 1}/${SKINS.length}</span><b>${k.name}</b><span>${k.note}</span>
+      ${state === 'locked' ? `<span class="pv-goal">「${c.name}」 ${c.need} · ${fmt(st.have)}/${fmt(st.goal)}</span>` : state === 'ready' ? '<span class="pv-goal">도전 달성! 받기만 하면 돼요</span>' : '<span class="pv-goal ok">가진 천이에요</span>'}`;
+    $('.pv-actions', layer).innerHTML = `<button class="btn btn-small btn-ghost" data-act="back">돌아가기</button>${state === 'owned' || state === 'worn' ? `<button class="btn btn-small btn-seal" data-act="wear">${state === 'worn' ? '쓰는 중' : '이 천 쓰기'}</button>` : ''}`;
+  };
+  const close = (wearId) => {
+    layer.remove();
+    behind.forEach((n) => n.removeAttribute('inert'));
+    previewClose = null;
+    window.removeEventListener('keydown', onKey, true);
+    if (wearId) { settings.skin = wearId; store.saveSettings(settings); }
+    applySkin();
+    reopen();
+  };
+  const step = (d) => { i = (i + d + SKINS.length) % SKINS.length; sfx.ui(); show(); };
+  const onKey = (e) => {
+    // capture phase: the global Escape (pause / close sheet) must not see these keys
+    if (['Escape', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.stopImmediatePropagation();
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowLeft') step(-1);
+    else if (e.key === 'ArrowRight') step(1);
+  };
+  window.addEventListener('keydown', onKey, true);
+  layer.addEventListener('click', (e) => {
+    const n = e.target.closest('[data-d],[data-act]');
+    if (!n) return;
+    unlock();
+    if (n.dataset.d) step(+n.dataset.d);
+    else if (n.dataset.act === 'wear') { sfx.ui(); haptic(10); close(SKINS[i].id); } else { sfx.ui(); close(); }
+  });
+  let sx = null;
+  layer.addEventListener('pointerdown', (e) => { sx = e.clientX; });
+  layer.addEventListener('pointerup', (e) => {
+    if (sx !== null && Math.abs(e.clientX - sx) > 50 && !e.target.closest('.preview-bar')) step(e.clientX < sx ? 1 : -1);
+    sx = null;
+  });
+  show();
+  $('.pv-nav[data-d="1"]', layer).focus();
 }
 
 function refreshClaimBadge() {
@@ -1323,13 +1405,18 @@ function showRecords() {
       <div><small>지은 판</small><b>${meta.runs}</b></div>
       <div><small>완성한 누비</small><b>${meta.wins}</b></div>
       <div><small>최고 도달</small><b>${meta.bestDay ? bestDayLabel(meta.bestDay) : '-'}</b></div>
+      <div><small>최고 점수 (한 판)</small><b>${fmt(meta.bestPoints || 0)}</b></div>
+      <div><small>누적 점수</small><b>${fmt(meta.points || 0)}</b></div>
       <div><small>최고 한 땀</small><b>${fmt(meta.bestHand)}</b></div>
-      <div><small>최고 연속</small><b>${meta.bestStreak}</b></div>
       <div><small>누빈 줄</small><b>${fmt(meta.clears)}</b></div>
+      <div><small>최고 족보 레벨</small><b>Lv.${meta.bestLevel || 1}</b></div>
     </div>
+    ${(meta.quilts || []).length ? `<div class="section-label"><span>누비 보관함</span><span>최근 ${meta.quilts.length}판</span></div>
+    <div class="quilt-shelf">${meta.quilts.map((q, i) => `<figure><canvas data-q="${i}" aria-label="지난 조각누비"></canvas><figcaption>${q.win ? '<b>완성</b> · ' : ''}${bestDayLabel(Math.min(q.day, 99))}<br>${fmt(q.points)}점</figcaption></figure>`).join('')}</div>` : ''}
     ${days.length ? `<div class="section-label"><span>오늘의 의뢰</span><span>${meta.dailyStreak ? `${meta.dailyStreak.count}일 연속` : ''}</span></div>
     <div class="daily-list">${days.map(([k, v]) => `<div><span>${k.split('-').slice(1).join('/')}</span><b>${v.label}</b></div>`).join('')}</div>` : ''}`;
-  openModal(html, { center: true, close: closeModal });
+  const s = openModal(html, { center: true, close: closeModal });
+  requestAnimationFrame(() => s.querySelectorAll('canvas[data-q]').forEach((c) => drawQuilt(c, meta.quilts[+c.dataset.q].h)));
 }
 
 // ---------- title buttons ----------
@@ -1343,7 +1430,7 @@ function confirmReplace(title, go) {
     if (R.isValidSave(old)) {
       writeRecords(meta, R.migrate(old), { victory: false });
       store.saveMeta(meta);
-      noteChallenges(R.migrate(old).stats);
+      noteChallenges();
     }
     store.clearRun();
     go();

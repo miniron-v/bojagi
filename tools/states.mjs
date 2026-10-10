@@ -96,56 +96,58 @@ await shot('codex');
 await page.click('.sheet-close');
 await page.waitForTimeout(300);
 await shot('after-close');
-// challenges + skins: two claimed, one ready to claim, the rest in progress
+// challenges + skins: lifetime records with one reward claimed, one waiting, the rest in progress
 await page.evaluate(() => {
   const m = JSON.parse(localStorage.getItem('bojagi.meta.v1'));
-  m.challenges = { streak5: { best: 6, done: true, claimed: true }, mono6: { best: 6, done: true, claimed: true }, hand1500: { best: 1620, done: true, claimed: false }, day3: { best: 5, done: false, claimed: false } };
+  Object.assign(m, { points: 312000, clears: 210, bestPoints: 48000, bestLevel: 6, wins: 1, challengesV: 2,
+    challenges: { points300k: { best: 312000, done: true, claimed: true } } });
+  m.quilts = [1, 2, 3, 4, 5].map((n) => ({ at: n, win: n === 2, day: n === 2 ? 4 : 2 + (n % 2), points: 20000 * n,
+    h: Array.from({ length: n === 2 ? 12 : 4 + n }, (_, i) => ({ color: ['blue', 'red', 'yellow', 'white', 'black'][(i * n) % 5], seam: ['single', 'double', 'mono', 'cross', 'triple', 'twinMono', 'perfect'][(i + n) % 7], ok: !(n !== 2 && i === 3 + n), boss: i % 3 === 2 })) }));
   localStorage.removeItem('bojagi.run.v1');
   localStorage.setItem('bojagi.meta.v1', JSON.stringify(m));
 });
 await page.goto(url);
 await page.waitForTimeout(400);
 await shot('title-jjok');
-await page.click('#btn-new');
-await page.waitForTimeout(900);
-await shot('board-jjok');
-await page.goto(url);
-await page.evaluate(() => localStorage.removeItem('bojagi.run.v1'));
-await page.reload();
+await page.click('#btn-records');
 await page.waitForTimeout(400);
+await shot('records');
+await page.click('.sheet-close');
 await page.click('#btn-skin');
 await page.waitForTimeout(300);
 await shot('skins');
-await page.click('[data-claim="hand1500"]');
-await page.waitForTimeout(500);
-await shot('skins-claimed');
-for (const id of ['cheongmyeong', 'dancheong', 'jaju']) {
-  await page.click(`.skin-card[data-skin="${id}"]`);
-  await page.waitForTimeout(150);
-  await page.click('.sheet-close');
-  await page.waitForTimeout(250);
-  await shot(`title-${id}`);
-  await page.click('#btn-new');
-  await page.waitForTimeout(900);
-  await shot(`board-${id}`);
-  await page.goto(url);
-  await page.evaluate(() => localStorage.removeItem('bojagi.run.v1'));
-  await page.reload();
-  await page.waitForTimeout(400);
-  await page.click('#btn-skin');
-  await page.waitForTimeout(200);
-}
-// the last two skins, forced on for a look
-await page.evaluate(() => {
-  const m = JSON.parse(localStorage.getItem('bojagi.meta.v1'));
-  m.challenges.day3 = { best: 9, done: true, claimed: true }; m.challenges.finish = { best: 12, done: true, claimed: true };
-  localStorage.setItem('bojagi.meta.v1', JSON.stringify(m));
+await page.click('.skin-row[data-skin="dancheong"] .sr-pic');
+await page.waitForTimeout(300);
+await shot('preview-dancheong');
+await page.click('.pv-nav[data-d="1"]');
+await page.waitForTimeout(200);
+await shot('preview-next');
+await page.click('[data-act="back"]');
+await page.waitForTimeout(300);
+await page.click('[data-wear="cheongmyeong"]');
+await page.waitForTimeout(300);
+await shot('skins-worn');
+await page.click('.sheet-close');
+// reward sheet with the quilt patch stitched in
+await inject(`R.beginOrder(run); run.order.seams = { double: 3, single: 1 }; run.order.colors = { red: 20, blue: 4 };
+  run.order.score = run.order.target - 1;`);
+const mv = await page.evaluate(() => {
+  const { run, R } = window.__bojagi;
+  for (let i = 0; i < 3; i++) for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (run.tray[i] && R.preview(run, i, r, c)) return { i, r, c };
+  return null;
 });
-for (const id of ['deungkkot', 'hanji']) {
-  await page.evaluate((id) => { const st = JSON.parse(localStorage.getItem('bojagi.settings.v1') || '{}'); st.skin = id; localStorage.setItem('bojagi.settings.v1', JSON.stringify(st)); }, id);
-  await page.goto(url);
-  await page.waitForTimeout(400);
-  await shot(`title-${id}`);
+if (mv) {
+  await page.evaluate(({ i, r, c }) => {
+    const { run, R } = window.__bojagi;
+    const res = R.place(run, i, r, c);
+    localStorage.setItem('bojagi.run.v1', JSON.stringify(run));
+    return res.ok;
+  }, mv);
+  await page.reload();
+  await page.waitForTimeout(300);
+  await page.click('#btn-continue');
+  await page.waitForTimeout(1200);
+  await shot('reward-quilt');
 }
 console.log(JSON.stringify({ errors }));
 await browser.close();

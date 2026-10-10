@@ -140,6 +140,7 @@ const scoreBy = {};
 let victories = 0;
 let totalPlaced = 0;
 const t0 = Date.now();
+const runPoints = [], runLevels = [], runClears = [];
 for (let k = 0; k < RUNS; k++) {
   const run = R.newRun({ seed: 1000 + k, locked: process.env.NEWBIE ? lockedIds({}) : [] });
   while (true) {
@@ -159,6 +160,7 @@ for (let k = 0; k < RUNS; k++) {
     }
     if (run.phase === 'reward') R.collectReward(run);
     if (run.phase === 'shop') { shopBot(run); R.leaveShop(run); continue; }
+    if (run.phase === 'victory' || run.phase === 'over') { runPoints.push(run.stats.points); runLevels.push(run.stats.topLevel); runClears.push(run.stats.clears); }
     if (run.phase === 'victory') { victories++; break; }
     if (run.phase === 'over') {
       const key = `${run.day}-${run.orderIdx}:${run.overReason}`;
@@ -177,3 +179,7 @@ for (let d = 1; d <= R.DAYS; d++) for (let o = 0; o < 3; o++) {
   console.log(`day ${d} ${['small', 'big ', 'boss'][o]} target ${String(R.targetFor(d, o)).padStart(6)} reach ${pct(reach[key] || 0)}  median score/target ${med}`);
 }
 console.log('ends:', Object.entries(ends).sort().map(([k, v]) => `${k}=${v}`).join('  '));
+const q = (a, p) => { const b = a.slice().sort((x, y) => x - y); return b[Math.floor((b.length - 1) * p)]; };
+console.log(`run points  p25 ${q(runPoints, 0.25)}  median ${q(runPoints, 0.5)}  p75 ${q(runPoints, 0.75)}  p90 ${q(runPoints, 0.9)}  mean ${Math.round(runPoints.reduce((a, b) => a + b, 0) / runPoints.length)}`);
+console.log(`run clears  median ${q(runClears, 0.5)}  mean ${Math.round(runClears.reduce((a, b) => a + b, 0) / runClears.length)}`);
+console.log(`top seam level  median ${q(runLevels, 0.5)}  p90 ${q(runLevels, 0.9)}  max ${Math.max(...runLevels)}  >=10: ${runLevels.filter((v) => v >= 10).length}  >=7: ${runLevels.filter((v) => v >= 7).length}`);

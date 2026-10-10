@@ -475,28 +475,58 @@ test('patterns: only buildable seams are sold', () => {
   }
 });
 
-test('challenges: one-run feats, claimed by hand, pay out skins', async () => {
+test('challenges: lifetime goals, live progress from the run in play, claimed by hand', async () => {
   const { SKINS, resolveSkin, DEFAULT_SKIN } = await import('../src/ui/skins.js');
   const C = await import('../src/core/challenges.js');
-  const meta = {};
-  assert.equal(resolveSkin('cheongmyeong', meta).id, DEFAULT_SKIN);
-  assert.deepEqual(C.checkChallenges(meta, { bestStreak: 3 }).map((c) => c.id), []);
-  assert.equal(C.challengeState(meta, 'streak5').have, 3);
-  // stats are per run: a later, weaker run never lowers the best
-  C.checkChallenges(meta, { bestStreak: 1 });
-  assert.equal(C.challengeState(meta, 'streak5').have, 3);
-  assert.deepEqual(C.checkChallenges(meta, { bestStreak: 6 }).map((c) => c.id), ['streak5']);
-  assert.deepEqual(C.checkChallenges(meta, { bestStreak: 7 }), [], 'announced once');
+  const { recordRun } = await import('../src/core/records.js');
+  const meta = { points: 290000, clears: 10, wins: 0 };
+  assert.deepEqual(C.checkChallenges(meta).map((c) => c.id), []);
+  assert.equal(C.challengeState(meta, 'points300k').have, 290000);
+  // a run in progress counts before it is recorded, and is not counted twice after
+  const run = { stats: { points: 12000, clears: 30, topLevel: 4 }, reported: {} };
+  assert.deepEqual(C.checkChallenges(meta, C.liveRecord(meta, run)).map((c) => c.id), ['points300k']);
+  const live = C.liveRecord(meta, run);
+  assert.equal(live.points, 302000);
+  assert.equal(live.bestLevel, 4);
+  run.reported = { points: 12000, clears: 30 };
+  assert.equal(C.liveRecord(meta, run).points, 290000, 'reported part not added again');
+  assert.deepEqual(C.checkChallenges(meta, live), [], 'announced once');
   assert.equal(resolveSkin('cheongmyeong', meta).id, DEFAULT_SKIN, 'not worn until claimed');
-  assert.equal(C.claimable(meta).length, 1);
-  assert.ok(C.claimChallenge(meta, 'streak5'));
-  assert.ok(!C.claimChallenge(meta, 'streak5'));
+  assert.ok(C.claimChallenge(meta, 'points300k'));
+  assert.ok(!C.claimChallenge(meta, 'points300k'));
   assert.equal(resolveSkin('cheongmyeong', meta).id, 'cheongmyeong');
-  assert.ok(!C.claimChallenge(meta, 'finish'), 'cannot claim an unmet challenge');
+  assert.ok(!C.claimChallenge(meta, 'wins3'), 'cannot claim an unmet challenge');
+  // recordRun keeps the score the player actually made, overshoot included
+  const R2 = await import('../src/core/run.js');
+  const r = R2.newRun({ seed: 3 });
+  r.stats.points = 777; r.stats.topLevel = 6;
+  const m2 = {};
+  const info = recordRun(m2, r);
+  assert.equal(m2.bestPoints, 777); assert.equal(m2.points, 777); assert.equal(m2.bestLevel, 6); assert.ok(info.newPoints);
+  recordRun(m2, r);
+  assert.equal(m2.points, 777, 'idempotent');
   // every skin but the default is a challenge reward, and every reward is a real skin
   const rewards = new Set(C.CHALLENGES.map((c) => c.skin));
   for (const k of SKINS) assert.equal(rewards.has(k.id), k.id !== DEFAULT_SKIN, k.id);
   for (const k of SKINS) for (const f of ['ground', 'onGround', 'onGround2', 'onAlert', 'silk', 'silk2', 'silk3', 'deep', 'veil', 'rare', 'pattern', 'cloth', 'muted', 'dim']) {
     assert.match(k[f], /^#[0-9a-f]{6}$/, `${k.id}.${f}`);
   }
+});
+
+test('run points include the overshoot past the target, and each order logs its keepsake seam', () => {
+  const run = R.newRun({ seed: 11 });
+  R.beginOrder(run);
+  let guard = 0;
+  while (run.phase === 'play' && guard++ < 300) {
+    let moved = false;
+    for (let i = 0; i < 3 && !moved; i++) for (let r = 0; r < 8 && !moved; r++) for (let c = 0; c < 8 && !moved; c++) {
+      if (run.tray[i] && R.preview(run, i, r, c)) { R.place(run, i, r, c); moved = true; }
+    }
+    if (!moved) R.discard(run);
+  }
+  const h = run.history[0];
+  assert.ok(h, 'order logged');
+  assert.equal(run.stats.points, h.score, 'points = everything sewn, not the target');
+  assert.ok(h.seam === null || typeof h.seam === 'string');
+  assert.equal(h.target, run.history[0].target);
 });
