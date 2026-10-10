@@ -220,7 +220,7 @@ function showToolTip(inst, anchor, extra) {
   tipEl = document.createElement('div');
   tipEl.className = 'pop-tip';
   tipEl.setAttribute('role', 'tooltip');
-  tipEl.innerHTML = `<b>${def.name}</b> <small>${RARITY_NAME[def.rarity]}</small><p>${toolDesc(inst)}</p>`;
+  tipEl.innerHTML = `<b>${def.name}</b> <small>${RARITY_NAME[def.rarity]}</small><p>${richText(toolDesc(inst))}</p>`;
   if (extra) tipEl.appendChild(extra);
   app.appendChild(tipEl);
   const ar = app.getBoundingClientRect();
@@ -268,6 +268,13 @@ function signatureSeam() {
     if (a[0] > b[0] || (a[0] === b[0] && a[1] > b[1])) best = s.id;
   }
   return best;
+}
+/** Seam names read as jargon on their own, so wherever one appears it carries its shape: "겹누비 나란히 2줄". */
+const shapeTag = (id) => `<span class="shape">${SEAM_BY_ID[id].short}</span>`;
+const SEAM_NAME_RE = new RegExp(`(${SEAMS.map((x) => x.name).sort((a, b) => b.length - a.length).join('|')})`, 'g');
+const SEAM_ID_BY_NAME = Object.fromEntries(SEAMS.map((x) => [x.name, x.id]));
+function richText(text) {
+  return text.replace(SEAM_NAME_RE, (m) => `<span class="seam-ref">${m}${shapeTag(SEAM_ID_BY_NAME[m])}</span>`);
 }
 const lvTag = (id) => (SEAM_BY_ID[id].fixed ? '' : `Lv.${seamLevel(id)}`);
 const seamLabel = (id) => `${SEAM_BY_ID[id].name} ${lvTag(id)}`.trim();
@@ -441,6 +448,7 @@ function toolCard(id, { action = '', sold = false, locked = false, inst = null }
     const p = !isUnlocked(id, meta) && progress(id, meta);
     desc = p ? `잠김 · ${p.need} (${p.have}/${p.goal})` : '아직 만나지 못한 도구';
   }
+  desc = richText(desc);
   return `<div class="card r${def.rarity}${sold ? ' sold' : ''}${locked ? ' locked' : ''}">
     <div class="art">${toolArt(def)}</div>
     <div class="min"><div class="name">${locked ? '???' : def.name}<span class="rar">${RARITY_NAME[def.rarity]}</span></div><div class="desc">${desc}</div></div>
@@ -603,7 +611,7 @@ function showPreview(h) {
   if (pv.lines.length) {
     setStreak(pv.streak, 'up');
     el.order.classList.add('previewing');
-    el.peek.innerHTML = `<span class="pk-seam">${SEAM_BY_ID[pv.seam].name}<small>${lvTag(pv.seam)}</small></span>
+    el.peek.innerHTML = `<span class="pk-seam">${SEAM_BY_ID[pv.seam].name}${shapeTag(pv.seam)}</span>
       <span class="pk-calc"><span class="c">${fmt(pv.chips)}</span><i>×</i><span class="m">${fmtMult(pv.mult)}</span></span>
       <span class="pk-gain">${pv.completes ? '주문 완료' : `+${fmt(pv.score)}`}</span>`;
     const key = `${h.i}:${h.r}:${h.c}`;
@@ -622,7 +630,7 @@ function showPreview(h) {
 }
 
 function tallyHtml(seam, chips, mult, label, win = false) {
-  const head = seam ? `<div class="seam">${SEAM_BY_ID[seam].name}<small>${lvTag(seam)}</small></div>` : '';
+  const head = seam ? `<div class="seam">${SEAM_BY_ID[seam].name} ${shapeTag(seam)}<small>${lvTag(seam)}</small></div>` : '';
   return `${head}<div class="row"><span class="chips"><small>칩</small><em>${chips}</em></span><span class="x">×</span><span class="mult"><small>배수</small><em>${mult}</em></span></div><div class="label${win ? ' win' : ''}">${label}</div>`;
 }
 
@@ -765,7 +773,7 @@ function startTally(ev) {
       if (st.src === 'seam') {
         chips = st.chips;
         mult = st.mult;
-        label = SEAM_BY_ID[st.seam].how;
+        label = `${SEAM_BY_ID[st.seam].short} · 칩 ${st.chips} × 배수 ${st.mult}`;
         beat = 420;
         if (st.seam !== 'single') {
           view.text(SEAM_BY_ID[st.seam].name, boardMid.x, boardMid.y, { size: 30, color: '#f3ead6', dur: 1100, rise: 14 });
@@ -931,8 +939,8 @@ function patternCard(pt, i) {
   const can = !pt.sold && run.coins >= PATTERN_PRICE;
   return `<div class="card pattern${pt.sold ? ' sold' : ''}">
     <div class="art">${seamIcon(pt.id)}</div>
-    <div class="min"><div class="name">${seam.name} 본 <span class="up">Lv.${lv} → ${lv + 1}</span></div>
-      <div class="desc">칩 ${now.chips}→${nxt.chips}, 배수 ${now.mult}→${nxt.mult}<span class="cond"> · ${seam.how}</span></div></div>
+    <div class="min"><div class="name">${seam.name} 본 ${shapeTag(pt.id)} <span class="up">Lv.${lv}→${lv + 1}</span></div>
+      <div class="desc">칩 ${now.chips}→${nxt.chips}, 배수 ${now.mult}→${nxt.mult}</div></div>
     <button class="btn btn-small ${can ? 'btn-gold' : 'btn-ghost'} price" data-pattern="${i}" ${can ? '' : 'disabled'}>${pt.sold ? '팔림' : `${PATTERN_PRICE}닢`}</button></div>`;
 }
 
@@ -944,7 +952,7 @@ function showSeams(back) {
     <div class="seam-table">${SEAMS.map((sm) => {
       const lv = seamLevel(sm.id);
       const v = seamValue(sm.id, lv);
-      return `<div class="seam-row${sm.id === sig && lv > 1 ? ' hot' : ''}"><span class="ic">${seamIcon(sm.id)}</span><span class="nm">${sm.name}<small>${sm.fixed ? '레벨 없음' : `Lv.${lv}`}</small></span>
+      return `<div class="seam-row${sm.id === sig && lv > 1 ? ' hot' : ''}"><span class="ic">${seamIcon(sm.id)}</span><span class="nm">${sm.name} ${shapeTag(sm.id)}<small>${sm.fixed ? '레벨 없음' : `Lv.${lv}`}</small></span>
         <span class="val"><span class="c">${v.chips}</span> × <span class="m">${v.mult}</span></span>
         <span class="cond">${sm.how}${run && counts[sm.id] ? ` <span class="cnt">이번 판 ${counts[sm.id]}번</span>` : ''}</span></div>`;
     }).join('')}</div>`;
@@ -1163,10 +1171,10 @@ function codexCard(id) {
   else if (p) state = 'locked';
   else if (spotted) state = 'spotted';
   const name = state === 'owned' || state === 'spotted' ? def.name : state === 'locked' ? '잠김' : '?';
-  const desc = state === 'owned' || state === 'spotted' ? toolDesc(makeTool(id))
-    : state === 'locked' ? `${p.need} (${p.have}/${p.goal})` : RARITY_NAME[def.rarity];
-  return `<div class="codex-card r${def.rarity} ${state}"><span class="art">${toolArt(def)}</span>
-    <b>${name}${state === 'spotted' ? '<small>본 적 있음</small>' : ''}</b><span class="desc">${desc}</span></div>`;
+  const desc = richText(state === 'owned' || state === 'spotted' ? toolDesc(makeTool(id))
+    : state === 'locked' ? `해금: ${p.need} (${p.have}/${p.goal})` : RARITY_NAME[def.rarity]);
+  return `<div class="codex-card r${def.rarity} cx-${state}"><span class="art">${toolArt(def)}</span>
+    <span class="cx-text"><b>${name}${state === 'spotted' ? '<small>본 적 있음</small>' : ''}</b><span class="desc">${desc}</span></span></div>`;
 }
 
 function showCodex() {
@@ -1187,7 +1195,7 @@ function showRecords() {
       <div><small>최고 도달</small><b>${meta.bestDay ? bestDayLabel(meta.bestDay) : '-'}</b></div>
       <div><small>최고 한 땀</small><b>${fmt(meta.bestHand)}</b></div>
       <div><small>최고 연속</small><b>${meta.bestStreak}</b></div>
-      <div><small>꿰맨 솔기</small><b>${fmt(meta.clears)}</b></div>
+      <div><small>누빈 줄</small><b>${fmt(meta.clears)}</b></div>
     </div>
     ${days.length ? `<div class="section-label"><span>오늘의 의뢰</span><span>${meta.dailyStreak ? `${meta.dailyStreak.count}일 연속` : ''}</span></div>
     <div class="daily-list">${days.map(([k, v]) => `<div><span>${k.split('-').slice(1).join('/')}</span><b>${v.label}</b></div>`).join('')}</div>` : ''}`;

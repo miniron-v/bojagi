@@ -9,14 +9,14 @@ export const SEAMS = [
   // 홈질 is the running stitch every nubi line is sewn with; 겹누비 quilts two layers; 세누비 (잔누비)
   // is the fine, closely spaced quilting; 납작누비 is the flat, even kind; 오목누비, the ridged
   // "finest of all nubi", for two matched lines; 마무리 is the finishing step when the cloth is done.
-  { id: 'perfect', name: '마무리', chips: 120, mult: 8, lvChips: 40, lvMult: 3, how: '줄을 지워 수틀을 완전히 비우기' },
-  { id: 'twinMono', name: '오목누비', chips: 150, mult: 8, lvChips: 40, lvMult: 3, how: '한 색으로 채운 줄 두 개 이상을 한 번에' },
-  { id: 'triple', name: '세누비', chips: 120, mult: 6, lvChips: 35, lvMult: 3, how: '세 줄 이상을 한 번에' },
-  { id: 'mono', name: '납작누비', chips: 70, mult: 4, lvChips: 25, lvMult: 2, how: '한 색으로만 채운 줄 하나 포함' },
-  { id: 'cross', name: '십자수', chips: 80, mult: 4, lvChips: 25, lvMult: 2, how: '가로와 세로를 함께' },
-  { id: 'double', name: '겹누비', chips: 60, mult: 3, lvChips: 20, lvMult: 2, how: '같은 방향 두 줄을 한 번에' },
+  { id: 'perfect', short: '판 비움', name: '마무리', chips: 120, mult: 8, lvChips: 40, lvMult: 3, how: '줄을 지워 수틀을 완전히 비우기' },
+  { id: 'twinMono', short: '한 색 2줄', name: '오목누비', chips: 150, mult: 8, lvChips: 40, lvMult: 3, how: '한 색으로 채운 줄 두 개 이상을 한 번에' },
+  { id: 'triple', short: '3줄 이상', name: '세누비', chips: 120, mult: 6, lvChips: 35, lvMult: 3, how: '세 줄 이상을 한 번에' },
+  { id: 'mono', short: '한 색 줄', name: '납작누비', chips: 70, mult: 4, lvChips: 25, lvMult: 2, how: '한 색으로만 채운 줄 하나 포함' },
+  { id: 'cross', short: '가로+세로', name: '십자수', chips: 80, mult: 4, lvChips: 25, lvMult: 2, how: '가로와 세로를 함께' },
+  { id: 'double', short: '나란히 2줄', name: '겹누비', chips: 60, mult: 3, lvChips: 20, lvMult: 2, how: '같은 방향 두 줄을 한 번에' },
   // the fallback hand: it never levels, so a run has to grow by committing to a bigger stitch
-  { id: 'single', name: '홈질', chips: 30, mult: 1, lvChips: 0, lvMult: 0, how: '한 줄', fixed: true },
+  { id: 'single', short: '1줄', name: '홈질', chips: 30, mult: 1, lvChips: 0, lvMult: 0, how: '한 줄', fixed: true },
 ];
 
 export const SEAM_BY_ID = Object.fromEntries(SEAMS.map((s) => [s.id, s]));

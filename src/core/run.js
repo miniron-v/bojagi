@@ -323,7 +323,7 @@ export function place(run, i, r, c) {
     run.stats.clears += lines.length;
     run.stats.bestStreak = Math.max(run.stats.bestStreak, o.streak);
     if (ctx.perfect) run.stats.perfects += 1;
-    run.stats.monos += ctx.monoLines;
+    if (ctx.monoLines) run.stats.monos += 1; // clears that made 납작누비 (or better)
     if (ctx.rowLines && ctx.colLines) run.stats.crosses += 1;
     if (lines.length >= 3) run.stats.triples += 1;
     const sc = (run.stats.seamCounts ||= {});

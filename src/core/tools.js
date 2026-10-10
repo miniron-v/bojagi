@@ -22,7 +22,7 @@ const defs = [
   },
   ...COLORS.map((color) => ({
     id: `thread_${color}`, name: THREAD_NAME[color], rarity: 1, price: 4, art: 'thread', color,
-    desc: () => `지워진 ${COLOR_NAMES[color]}색 칸마다 칩 +10`,
+    desc: () => `줄을 지울 때 ${COLOR_NAMES[color]}색 칸 하나마다 칩 +10`,
     score: (ctx) => {
       const n = ctx.cleared.filter((c) => c.color === color).length;
       return n ? [{ chips: n * 10 }] : [];
@@ -30,33 +30,33 @@ const defs = [
   })),
   {
     id: 'tape', name: '줄자', rarity: 1, price: 5, art: 'tape',
-    desc: () => '지운 줄 하나마다 배수 +2',
+    desc: () => '줄을 지울 때 지운 줄 하나마다 배수 +2',
     score: (ctx) => (ctx.lineCount ? [{ mult: 2 * ctx.lineCount }] : []),
   },
   {
     id: 'pouch', name: '복주머니', rarity: 1, price: 3, art: 'pouch',
-    desc: () => '주문을 마칠 때마다 엽전 +2',
+    desc: () => '주문을 마칠 때 엽전 +2',
     reward: () => 2,
   },
   {
     id: 'sewingbox', name: '반짇고리', rarity: 1, price: 3, art: 'box',
-    desc: () => '주문마다 조각 바꾸기 +1, 조각 +1',
+    desc: () => '주문마다 조각 +1, 조각 바꾸기 +1',
     discards: 1,
     patches: 1,
   },
   {
     id: 'lantern', name: '청사초롱', rarity: 2, price: 6, art: 'lantern',
-    desc: () => '남은 조각 바꾸기 1회마다 배수 +2',
+    desc: () => '줄을 지울 때 남은 조각 바꾸기 1회마다 배수 +2',
     score: (ctx) => (ctx.lineCount && ctx.discardsLeft ? [{ mult: 2 * ctx.discardsLeft }] : []),
   },
   {
     id: 'scissors', name: '가위', rarity: 2, price: 5, art: 'scissors',
-    desc: () => '두 줄 이상 동시에 지우면 ×2',
-    score: (ctx) => (ctx.lineCount >= 2 ? [{ xmult: 2 }] : []),
+    desc: () => '겹누비·십자수·세누비로 지울 때 배수 ×2',
+    score: (ctx) => (['double', 'cross', 'triple'].includes(ctx.seam) ? [{ xmult: 2 }] : []),
   },
   {
     id: 'iron', name: '인두', rarity: 3, price: 8, art: 'iron',
-    desc: (inst) => `줄을 지울 때 배수 +${inst.data.mult || 0}. 지울 때마다 +1씩 커짐`,
+    desc: (inst) => `줄을 지울 때 배수 +${inst.data.mult || 0} (지울 때마다 +1씩 자람)`,
     init: () => ({ mult: 1 }),
     badge: (inst) => `+${inst.data.mult}`,
     score: (ctx, inst) => (ctx.lineCount && inst.data.mult ? [{ mult: inst.data.mult }] : []),
@@ -67,17 +67,17 @@ const defs = [
   },
   {
     id: 'spool', name: '실패', rarity: 2, price: 6, art: 'spool',
-    desc: () => '연속으로 지운 횟수마다 칩 +30',
+    desc: () => '줄을 지울 때 연속 1회마다 칩 +30',
     score: (ctx) => (ctx.lineCount ? [{ chips: 30 * ctx.streak }] : []),
   },
   {
     id: 'ruler', name: '자', rarity: 2, price: 6, art: 'ruler',
-    desc: () => '세로 솔기 하나마다 ×1.5',
+    desc: () => '줄을 지울 때 세로줄 하나마다 배수 ×1.5',
     score: (ctx) => (ctx.colLines ? [{ xmult: Math.pow(1.5, ctx.colLines) }] : []),
   },
   {
     id: 'obang', name: '오방 주머니', rarity: 2, price: 6, art: 'obang',
-    desc: () => '지운 칸에 세 가지 색 이상이 섞이면 ×1.5',
+    desc: () => '줄을 지울 때 지운 칸이 세 가지 색 이상이면 배수 ×1.5',
     score: (ctx) => {
       if (!ctx.lineCount) return [];
       const set = new Set(ctx.cleared.map((c) => c.color).filter((c) => COLORS.includes(c)));
@@ -91,31 +91,31 @@ const defs = [
   },
   {
     id: 'lamp', name: '등잔', rarity: 2, price: 6, art: 'lamp',
-    desc: () => '주문에서 첫 번째로 지울 때 ×3',
+    desc: () => '주문에서 처음 지울 때 배수 ×3',
     score: (ctx) => (ctx.lineCount && ctx.clearIndex === 1 ? [{ xmult: 3 }] : []),
   },
   {
     id: 'norigae', name: '노리개', rarity: 3, price: 8, art: 'norigae',
-    desc: () => '지운 뒤 빈칸이 48칸 이상이면 ×2, 판을 다 비우면 ×4',
+    desc: () => '마무리로 지울 때 배수 ×4, 지운 뒤 빈칸이 48칸 이상이면 배수 ×2',
     score: (ctx) => {
       if (!ctx.lineCount) return [];
-      if (ctx.perfect) return [{ xmult: 4 }];
+      if (ctx.seam === 'perfect' || ctx.perfect) return [{ xmult: 4 }];
       return ctx.emptyAfter >= 48 ? [{ xmult: 2 }] : [];
     },
   },
   {
     id: 'hoop', name: '밀대', rarity: 3, price: 8, art: 'roller',
-    desc: () => '가로와 세로를 함께 지우면 ×3',
-    score: (ctx) => (ctx.rowLines && ctx.colLines ? [{ xmult: 3 }] : []),
+    desc: () => '십자수로 지울 때 배수 ×3',
+    score: (ctx) => (ctx.seam === 'cross' ? [{ xmult: 3 }] : []),
   },
   {
     id: 'artisan', name: '장인의 손', rarity: 3, price: 8, art: 'hand',
-    desc: () => '납작누비·오목누비로 지우면 ×2.5',
+    desc: () => '납작누비·오목누비로 지울 때 배수 ×2.5',
     score: (ctx) => (ctx.seam === 'mono' || ctx.seam === 'twinMono' ? [{ xmult: 2.5 }] : []),
   },
   {
     id: 'stamp', name: '장인 도장', rarity: 2, price: 6, art: 'stamp',
-    desc: () => '가장 공들인(레벨이 제일 높은) 족보로 지우면 ×2. 레벨 2 이상부터',
+    desc: () => '레벨이 가장 높은 족보로 지울 때 배수 ×2 (레벨 2부터)',
     score: (ctx) => {
       if (!ctx.lineCount || !ctx.levels) return [];
       const top = Math.max(...Object.values(ctx.levels));
@@ -124,7 +124,7 @@ const defs = [
   },
   {
     id: 'manual', name: '침선 교본', rarity: 2, price: 5, art: 'book',
-    desc: (inst) => `줄을 지울 때 배수 +${inst.data.mult || 0}. 바느질 본을 살 때마다 +2씩 커짐`,
+    desc: (inst) => `줄을 지울 때 배수 +${inst.data.mult || 0} (본을 살 때마다 +2씩 자람)`,
     init: () => ({ mult: 0 }),
     badge: (inst) => `+${inst.data.mult}`,
     onPattern: (inst) => { inst.data.mult += 2; },
@@ -132,17 +132,17 @@ const defs = [
   },
   {
     id: 'sleeve', name: '색동 소매', rarity: 1, price: 4, art: 'sleeve',
-    desc: () => '겹누비·십자수로 지우면 칩 +80',
+    desc: () => '겹누비·십자수로 지울 때 칩 +80',
     score: (ctx) => (ctx.seam === 'double' || ctx.seam === 'cross' ? [{ chips: 80 }] : []),
   },
   {
     id: 'coins', name: '엽전 꾸러미', rarity: 3, price: 7, art: 'coins',
-    desc: () => '가진 엽전 5닢마다 배수 +1 (최대 +8)',
+    desc: () => '줄을 지울 때 가진 엽전 5닢마다 배수 +1 (최대 +8)',
     score: (ctx) => (ctx.lineCount && ctx.coins >= 5 ? [{ mult: Math.min(8, Math.floor(ctx.coins / 5)) }] : []),
   },
   {
     id: 'silk', name: '비단', rarity: 3, price: 8, art: 'silk',
-    desc: (inst) => `줄을 지울 때 칩 +${inst.data.chips || 0}. 조각을 놓을 때마다 +3씩 쌓이고 주문마다 초기화`,
+    desc: (inst) => `줄을 지울 때 칩 +${inst.data.chips || 0} (조각을 놓을 때마다 +3씩 자람, 주문마다 처음부터)`,
     init: () => ({ chips: 0 }),
     badge: (inst) => `+${inst.data.chips}`,
     onPlace: (inst) => { inst.data.chips += 3; },
@@ -151,7 +151,7 @@ const defs = [
   },
   {
     id: 'grandma', name: '할머니의 바늘', rarity: 3, price: 9, art: 'needle',
-    desc: () => '주문에서 짝수 번째(2·4·6…)로 지울 때마다 ×2.5',
+    desc: () => '주문에서 짝수 번째(2·4·6…)로 지울 때 배수 ×2.5',
     score: (ctx) => (ctx.lineCount && ctx.clearIndex % 2 === 0 ? [{ xmult: 2.5 }] : []),
   },
 ];

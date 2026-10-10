@@ -461,21 +461,22 @@ b, .num { font-variant-numeric: tabular-nums; }
 .section-label { margin-top: 14px; }
 
 /* codex: two-column tiles */
-.codex { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
-.codex-card { display: grid; grid-template-columns: 36px 1fr; gap: 2px 8px; align-items: center; padding: 9px; border-radius: var(--cut); background: #ffffff0a; outline: 1.5px dashed #f3ead61f; outline-offset: -4px; }
-.codex-card .art { grid-row: span 2; width: 36px; height: 36px; display: grid; place-items: center; }
+.codex { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.codex-card { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px; border-radius: var(--cut); background: #ffffff0a; outline: 1.5px dashed #f3ead61f; outline-offset: -4px; }
+.codex-card .art { flex: none; width: 36px; height: 36px; display: grid; place-items: center; }
 .codex-card .art svg { width: 34px; height: 34px; }
+.codex-card .cx-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .codex-card b { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
-.codex-card .desc { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.codex-card .desc { font-size: 12px; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
 .codex-card.r2 { outline-color: #8db0ec66; }
 .codex-card.r3 { outline-color: #e2b54a99; }
-.codex-card.spotted .art svg { opacity: .55; filter: grayscale(1); }
-.codex-card.spotted b { color: var(--muted); }
-.codex-card.spotted b small { display: block; font-weight: 500; font-size: 11px; color: var(--dim); }
-.codex-card.spotted .desc { color: var(--dim); }
-.codex-card.locked .art svg, .codex-card.unknown .art svg { opacity: .2; filter: grayscale(1) brightness(.6); }
-.codex-card.locked b, .codex-card.unknown b { color: var(--dim); }
-.codex-card.owned { background: #ffffff10; }
+.codex-card.cx-spotted .art svg { opacity: .55; filter: grayscale(1); }
+.codex-card.cx-spotted b { color: var(--muted); }
+.codex-card.cx-spotted b small { display: block; font-weight: 500; font-size: 11px; color: var(--dim); }
+.codex-card.cx-spotted .desc { color: var(--dim); }
+.codex-card.cx-locked .art svg, .codex-card.cx-unknown .art svg { opacity: .2; filter: grayscale(1) brightness(.6); }
+.codex-card.cx-locked b, .codex-card.cx-unknown b { color: var(--dim); }
+.codex-card.cx-owned { background: #ffffff10; }
 
 
 /* short phones: keep the whole market on one screen */
@@ -547,3 +548,12 @@ b, .num { font-variant-numeric: tabular-nums; }
 .pk-gain { margin-left: auto; font-family: var(--font-display); font-weight: 800; font-size: 17px; color: var(--gold); white-space: nowrap; }
 .order.peek-win .pk-gain { color: var(--good); }
 .order.peek-win .peek { outline-color: #79c08ecc; }
+
+/* seam shape tag: the plain-words shape that goes with every seam name */
+.shape { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 3px; background: #ffffff14; color: var(--muted);
+  font-family: var(--font-body); font-weight: 500; font-size: .78em; line-height: 1.5; vertical-align: .08em; white-space: nowrap; }
+.seam-ref { white-space: nowrap; }
+.tally .seam .shape { font-size: 12px; }
+.pk-seam .shape { font-size: 11px; }
+.card.pattern .name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; }
+.card.pattern .name .shape { margin-left: 0; }
