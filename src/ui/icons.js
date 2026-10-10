@@ -52,6 +52,11 @@ const art = {
   coins: () => S(`${[[16, 30], [30, 30], [23, 18]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="10" fill="${G}"/><circle cx="${x}" cy="${y}" r="10" fill="none" stroke="var(--gold-2)" stroke-width="1.5"/><rect x="${x - 3}" y="${y - 3}" width="6" height="6" fill="var(--indigo)"/>`).join('')}`),
   silk: () => S(`<path d="M8 14 Q24 6 40 14 L40 34 Q24 42 8 34Z" fill="#b77bd0"/><path d="M8 14 Q24 22 40 14" fill="none" stroke="#e2b9f0" stroke-width="2"/>
     <path d="M8 24 Q24 32 40 24" fill="none" stroke="#9a5fb4" stroke-width="1.5"/><circle cx="20" cy="28" r="2.5" fill="${G}"/><circle cx="30" cy="22" r="2" fill="${G}"/>`),
+  // 밀대: the rod a nubi is rolled on while quilting, inlaid with mother-of-pearl
+  roller: () => S(`<path d="M10 14 Q24 8 38 14 L38 34 Q24 40 10 34Z" fill="var(--c-blue)" opacity=".85"/>
+    <path d="M10 20 Q24 14 38 20 M10 26 Q24 20 38 26 M10 32 Q24 26 38 32" stroke="var(--thread)" stroke-width="1" stroke-dasharray="2 1.6" fill="none" opacity=".8"/>
+    <rect x="4" y="21" width="40" height="7" rx="3.5" fill="${W}"/><rect x="4" y="21" width="40" height="2.5" rx="1.2" fill="#b07a4a"/>
+    <circle cx="13" cy="24.5" r="1.6" fill="#dfe8f0"/><circle cx="24" cy="24.5" r="1.6" fill="#f0d8e8"/><circle cx="35" cy="24.5" r="1.6" fill="#d8f0e8"/>`),
   stamp: () => S(`<rect x="12" y="6" width="24" height="16" rx="3" fill="${W}"/><rect x="16" y="20" width="16" height="6" fill="${W2}"/>
     <rect x="9" y="26" width="30" height="16" rx="2" fill="${R}"/><rect x="13" y="30" width="22" height="8" fill="none" stroke="var(--thread)" stroke-width="1.5"/>
     <text x="24" y="37" font-size="7" text-anchor="middle" fill="var(--thread)" font-family="serif">匠</text>`),

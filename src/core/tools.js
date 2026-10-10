@@ -104,13 +104,13 @@ const defs = [
     },
   },
   {
-    id: 'hoop', name: '수틀', rarity: 3, price: 8, art: 'hoop',
+    id: 'hoop', name: '밀대', rarity: 3, price: 8, art: 'roller',
     desc: () => '가로와 세로를 함께 지우면 ×3',
     score: (ctx) => (ctx.rowLines && ctx.colLines ? [{ xmult: 3 }] : []),
   },
   {
     id: 'artisan', name: '장인의 손', rarity: 3, price: 8, art: 'hand',
-    desc: () => '공그르기·쌈솔로 지우면 ×2.5',
+    desc: () => '납작누비·오목누비로 지우면 ×2.5',
     score: (ctx) => (ctx.seam === 'mono' || ctx.seam === 'twinMono' ? [{ xmult: 2.5 }] : []),
   },
   {
@@ -132,7 +132,7 @@ const defs = [
   },
   {
     id: 'sleeve', name: '색동 소매', rarity: 1, price: 4, art: 'sleeve',
-    desc: () => '박음질·십자수로 지우면 칩 +80',
+    desc: () => '겹누비·십자수로 지우면 칩 +80',
     score: (ctx) => (ctx.seam === 'double' || ctx.seam === 'cross' ? [{ chips: 80 }] : []),
   },
   {

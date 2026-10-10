@@ -210,7 +210,7 @@ test('seams: ranking picks the highest hand', async () => {
   // both cross (80×4) and mono (70×4) apply: the more valuable one is scored
   assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1 }), 'cross');
   assert.equal(judgeSeam({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1, perfect: false }, { mono: 3 }), 'mono');
-  // a leveled 박음질 is not overridden by an incidental single-color line
+  // a leveled 겹누비 is not overridden by an incidental single-color line
   assert.equal(judgeSeam({ lineCount: 2, rowLines: 2, colLines: 0, monoLines: 1, perfect: false }, { double: 5 }), 'double');
   assert.equal(j({ lineCount: 1, rowLines: 1, monoLines: 1 }), 'mono');
   assert.equal(j({ lineCount: 3, rowLines: 3, monoLines: 1 }), 'triple');

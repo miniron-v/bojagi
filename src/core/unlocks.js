@@ -3,7 +3,7 @@
 
 export const UNLOCKS = {
   artisan: { need: '한 색 줄을 8번 꿰매기', key: 'monos', goal: 8 },
-  hoop: { need: '가로·세로 함께 지우기 3번', key: 'crosses', goal: 3 },
+  hoop: { need: '십자수 3번 놓기', key: 'crosses', goal: 3 },
   norigae: { need: '판을 다 비우기 1번', key: 'perfects', goal: 1 },
   grandma: { need: '장날 2까지 가기', key: 'bestDay', goal: 2 },
   ruler: { need: '한 번에 세 줄 지우기 1번', key: 'triples', goal: 1 },
