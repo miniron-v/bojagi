@@ -2,6 +2,7 @@
 // Usage: node tools/states.mjs [width height]
 import { chromium } from 'playwright-core';
 import { mkdir } from 'node:fs/promises';
+import { routeFonts } from './fonts-route.mjs';
 
 const W = +process.argv[2] || 360;
 const H = +process.argv[3] || 640;
@@ -10,6 +11,7 @@ await mkdir(out, { recursive: true });
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 2 });
 const errors = [];
+await routeFonts(page);
 page.on('pageerror', (e) => errors.push(e.message));
 const url = 'file://' + new URL('../dist/index.html', import.meta.url).pathname;
 await page.goto(url);
@@ -41,11 +43,16 @@ const shot = (name) => page.screenshot({ path: `${out}s-${name}-${W}x${H}.png` }
 
 // boss intro with a full tool row
 await inject(`run.tools = ['thimble','iron','silk','scissors','lantern'].map(id => ({ id, data: id==='iron'?{mult:7}:id==='silk'?{chips:42}:{} }));
-  run.orderIdx = 2; run.bosses[0] = 'strict'; R.prepareOrder(run);`);
+  run.orderIdx = 2; run.bosses[0] = 'knots'; R.prepareOrder(run);`);
 await shot('boss-intro');
 await page.click('#go');
 await page.waitForTimeout(600);
 await shot('boss-hud');
+await page.click('#btn-seams');
+await page.waitForTimeout(400);
+await shot('seams');
+await page.click('#back');
+await page.waitForTimeout(300);
 await page.click('#hud-tools .tool');
 await page.waitForTimeout(200);
 await shot('tooltip');
@@ -76,3 +83,4 @@ if (ok) {
 }
 console.log(JSON.stringify({ errors }));
 await browser.close();
+

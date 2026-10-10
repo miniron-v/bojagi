@@ -3,12 +3,12 @@
 <meta name="description" content="조각을 이어 줄을 꿰매고, 바느질 도구로 점수 엔진을 만드는 퍼즐 로그라이트">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Song+Myung&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Hahmlet:wght@400;700;800&display=swap">
 <style>/*__CSS__*/</style>
 <div id="app">
   <section id="title" class="screen" aria-label="시작 화면">
     <div>
-      <h1 class="logo">보자기 공방<small>BOJAGI WORKSHOP</small></h1>
+      <h1 class="logo">보자기 공방<small>조각을 이어 손님의 보자기를 지어요</small></h1>
     </div>
     <canvas id="title-art" aria-hidden="true"></canvas>
     <div class="title-menu">
@@ -27,16 +27,18 @@
 
   <section id="game" class="screen" hidden aria-label="게임">
     <header class="hud-top">
-      <div><span class="day-label">장날 <b id="hud-day">1</b><span id="hud-daymax">/4</span></span><span id="hud-kind" class="kind">작은 주문</span></div>
-      <button class="icon-btn" id="btn-pause" aria-label="잠시 쉬기"></button>
+      <div class="where"><span class="day-label">장날 <b id="hud-day">1</b><small id="hud-daymax">/4</small></span><span id="hud-kind" class="kind">작은 주문</span></div>
+      <div class="hud-buttons">
+        <button class="icon-btn" id="btn-seams" aria-label="솔기 족보 보기"></button>
+        <button class="icon-btn" id="btn-pause" aria-label="잠시 쉬기"></button>
+      </div>
     </header>
     <section class="order" aria-label="주문 진행">
       <div class="score-row"><span class="score" id="hud-score" aria-live="polite">0</span><span class="target">목표 <b id="hud-target">0</b></span></div>
-      <div class="tally" id="tally" aria-hidden="true"></div>
       <div class="bar" id="hud-bar"><div class="ghost" id="hud-ghost"></div><div class="fill" id="hud-fill"></div></div>
       <div class="stats">
-        <div class="stat" id="stat-patches"><span id="ic-patch"></span><b id="hud-patches">0</b>조각</div>
         <div class="stat coins"><span id="ic-coin"></span><b id="hud-coins">0</b></div>
+        <button class="stat seam-tag" id="hud-seam" aria-label="가장 공들인 족보">족보 <b id="hud-seam-name">홑솔기</b></button>
         <div class="stat streak" id="hud-streak" hidden>연속 <b>0</b></div>
       </div>
       <div class="boss-line" id="hud-boss" hidden></div>
@@ -44,9 +46,11 @@
     <div class="tools" id="hud-tools" aria-label="바느질 도구"></div>
     <div class="stage" id="stage">
       <canvas id="cv" aria-label="수틀과 조각"></canvas>
+      <div class="tally" id="tally" aria-hidden="true"></div>
       <div class="hint" id="hint" role="status"></div>
     </div>
     <footer class="hud-bottom">
+      <div class="patches" id="stat-patches" aria-live="polite"><span id="ic-patch"></span><span class="num" id="hud-patches">0</span><small>조각<br>남음</small></div>
       <button class="btn btn-discard" id="btn-discard"><span class="ic" id="ic-reroll"></span>조각 바꾸기 <b id="hud-discards">2</b></button>
     </footer>
   </section>

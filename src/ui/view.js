@@ -79,6 +79,7 @@ export class View {
     this.size = size;
     this.bx = Math.round((this.W - size) / 2);
     this.by = Math.round(this.tallySpace + this.cell * 0.32);
+    this.stage.style.setProperty('--board-bottom', `${this.by + this.cell * 8}px`);
     const trayTop = this.by + size + this.cell * 0.6;
     const trayH = Math.max(this.cell * 2.9, this.H - trayTop - 4);
     this.trayRect = { y: trayTop, h: trayH };

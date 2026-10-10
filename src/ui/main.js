@@ -4,7 +4,7 @@ import * as R from '../core/run.js';
 import { TOOLS, TOOL_IDS, MAX_TOOLS, RARITY_NAME, toolDesc, toolBadge, sellPrice, makeTool } from '../core/tools.js';
 import { SHAPE_BY_ID } from '../core/shapes.js';
 import { View } from './view.js';
-import { toolArt, glyph } from './icons.js';
+import { toolArt, glyph, seamIcon } from './icons.js';
 import { clothTexture } from './art.js';
 import { sfx, unlock, setEnabled, resumeAudio, setAmbient } from './audio.js';
 import { createTitleArt } from './title-art.js';
@@ -13,6 +13,7 @@ import * as store from './store.js';
 import { lockedIds, isUnlocked, progress } from '../core/unlocks.js';
 import { recordRun as writeRecords, dailyStreakAlive } from '../core/records.js';
 import { fmt, fmtMult, kindName, dayName, bestDayLabel } from './format.js';
+import { SEAMS, SEAM_BY_ID, seamValue, PATTERN_PRICE } from '../core/seams.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app');
@@ -22,6 +23,7 @@ const el = {
   fill: $('#hud-fill'), ghost: $('#hud-ghost'), bar: $('#hud-bar'), patches: $('#hud-patches'), discards: $('#hud-discards'),
   coins: $('#hud-coins'), boss: $('#hud-boss'), tools: $('#hud-tools'), tally: $('#tally'), hint: $('#hint'),
   discardBtn: $('#btn-discard'), pause: $('#btn-pause'), statPatches: $('#stat-patches'), streak: $('#hud-streak'),
+  seamBtn: $('#btn-seams'), seamTag: $('#hud-seam'), seamName: $('#hud-seam-name'),
 };
 
 let run = null;
@@ -36,12 +38,14 @@ let tallyJob = null;
 let lastHoverKey = null;
 let endInfo = null;
 let pendingHint = null;
+let patchWarned = false;
 const speed = () => (settings.fast ? 0.55 : 1);
 
 setEnabled(settings.sound);
 setAmbient(settings.sound && settings.ambient !== false);
 app.style.setProperty('--cloth', `url(${clothTexture()})`);
 el.pause.innerHTML = glyph.pause;
+el.seamBtn.innerHTML = glyph.scroll;
 $('#ic-coin').innerHTML = glyph.coin;
 $('#ic-patch').innerHTML = glyph.patch;
 $('#ic-reroll').innerHTML = glyph.reroll;
@@ -130,7 +134,8 @@ function renderHud() {
   el.kind.classList.toggle('boss', !!o.boss);
   el.target.textContent = fmt(o.target);
   el.patches.textContent = o.patchesLeft;
-  el.statPatches.classList.toggle('low', o.patchesLeft <= 3);
+  el.statPatches.classList.toggle('low', o.patchesLeft <= 5);
+  el.seamName.textContent = seamLabel(signatureSeam());
   el.discards.textContent = o.discardsLeft;
   el.coins.textContent = run.coins;
   el.discardBtn.disabled = o.discardsLeft <= 0 || run.phase !== 'play';
@@ -138,7 +143,7 @@ function renderHud() {
   if (o.boss) {
     const b = R.BOSSES[o.boss];
     el.boss.hidden = false;
-    el.boss.innerHTML = `<span class="seal">${b.name[0]}</span><b>${b.name}</b><span class="desc">${b.desc}</span>`;
+    el.boss.innerHTML = `<span class="seal-mark">${b.name[0]}</span><b>${b.name}</b><span class="desc">${b.desc}</span>`;
     el.boss.onclick = () => toast(`${b.name}: ${b.desc}`, 2200);
   } else el.boss.hidden = true;
   setStreak(o.streak);
@@ -191,7 +196,7 @@ function fireTool(slot, label, kind) {
     pop.className = `pop ${kind}`;
     pop.textContent = label;
     node.appendChild(pop);
-    setTimeout(() => pop.remove(), 820);
+    setTimeout(() => pop.remove(), 1150);
   }
 }
 
@@ -230,6 +235,31 @@ function toast(text, ms = 1600) {
   clearTimeout(toast.t);
   toast.t = setTimeout(() => el.toast.classList.remove('show'), ms);
 }
+
+/** Explains a rule the first time it matters, then never again. */
+function teachOnce(key, text, ms = 3600) {
+  meta.seen ||= {};
+  if (meta.seen[key]) return false;
+  meta.seen[key] = true;
+  store.saveMeta(meta);
+  hint(text, ms);
+  return true;
+}
+
+// ---------- seams ----------
+const seamLevel = (id) => (run && run.seams && run.seams[id]) || 1;
+/** The seam this run is built around: highest level, ties broken by how often it was made. */
+function signatureSeam() {
+  const counts = (run.stats && run.stats.seamCounts) || {};
+  let best = 'single';
+  for (const s of SEAMS) {
+    const a = [seamLevel(s.id), counts[s.id] || 0];
+    const b = [seamLevel(best), counts[best] || 0];
+    if (a[0] > b[0] || (a[0] === b[0] && a[1] > b[1])) best = s.id;
+  }
+  return best;
+}
+const seamLabel = (id) => `${SEAM_BY_ID[id].name} Lv.${seamLevel(id)}`;
 
 // ---------- modal ----------
 function syncInput() {
@@ -298,7 +328,7 @@ function titleScreen() {
   $('#codex-count').textContent = `${meta.discovered.length}/${TOOL_IDS.length}`;
   $('#best-line').textContent = meta.runs
     ? `최고 ${bestDayLabel(meta.bestDay)} · 최고 한 땀 ${fmt(meta.bestHand)} · 완성 ${meta.wins}회`
-    : '조각을 이어 손님의 보자기를 지어 주세요';
+    : '';
   $('#btn-sound').textContent = settings.sound ? '소리 켬' : '소리 끔';
   titleArt.start();
 }
@@ -372,7 +402,7 @@ function toolCard(id, { action = '', sold = false, locked = false, inst = null }
 function showGift() {
   hint(null);
   const html = `<div class="eyebrow">첫 손님의 선물</div><h2>도구를 하나 고르세요</h2>
-    <p class="lead">바느질 도구는 칩과 배수를 키워 줘요.<br>도구는 ${MAX_TOOLS}개까지 들 수 있고, 장터에서 사고팔 수 있어요.</p>
+    <p class="lead">도구는 칩과 배수를 키워 줘요. ${MAX_TOOLS}개까지 들 수 있고 장터에서 사고팔 수 있어요.</p>
     <div class="cards">${run.gift.map((id, i) => toolCard(id, { action: `<button class="btn btn-gold btn-small" data-gift="${i}" ${i === 0 ? 'data-autofocus' : ''}>고르기</button>` })).join('')}</div>`;
   const s = openModal(html);
   on(s, '[data-gift]', once((e, n) => {
@@ -383,7 +413,7 @@ function showGift() {
     persist();
     renderHud();
     showShop();
-    if (!meta.toolTip) { meta.toolTip = true; store.saveMeta(meta); pendingHint = '위의 도구를 누르면 효과를 볼 수 있어요'; }
+    if (!meta.toolTip) { meta.toolTip = true; store.saveMeta(meta); pendingHint = '도구를 누르면 효과를, 위의 족보 버튼을 누르면 족보표를 볼 수 있어요'; }
   }));
 }
 
@@ -412,8 +442,9 @@ function showIntro() {
     closeModal();
     begin();
     const mid = view.cellCenterApp(3.5, 3.5);
-    view.text(`${dayLabel()} · ${kindName(o.kind)}`, mid.x, mid.y - view.cell * 0.9, { size: 24, color: '#a3abc8', dur: 1300, rise: 8, pop: 1.1 });
-    view.text(`목표 ${fmt(o.target)}`, mid.x, mid.y + view.cell * 0.2, { size: 40, color: '#e7b33a', dur: 1300, rise: 8, pop: 1.3, delay: 80 });
+    view.text(`${dayLabel()}  ${kindName(o.kind)}`, mid.x, mid.y - view.cell * 1.3, { size: 24, color: '#b3b8cf', dur: 1700, rise: 8, pop: 1.1 });
+    view.text(`목표 ${fmt(o.target)}`, mid.x, mid.y - view.cell * 0.1, { size: 42, color: '#e2b54a', dur: 1700, rise: 8, pop: 1.3, delay: 80 });
+    view.text(`조각 ${o.patchesLeft}개 안에`, mid.x, mid.y + view.cell * 1.0, { size: 22, color: '#f3ead6', dur: 1700, rise: 8, pop: 1.1, delay: 160 });
     sfx.ui();
     return;
   }
@@ -421,11 +452,21 @@ function showIntro() {
   const html = `<div class="eyebrow">${dayLabel()}${run.day <= R.DAYS ? ` / ${R.DAYS}` : ''}</div><h2>${kindName(o.kind)}</h2>
     <div class="big-target"><span class="num">${fmt(o.target)}</span><small>점 이상 지어 주세요</small></div>
     <div class="facts"><span class="fact">조각 <b>${o.patchesLeft}</b></span><span class="fact">바꾸기 <b>${o.discardsLeft}</b></span><span class="fact">보상 <b>${R.ORDER_KINDS[o.kind].reward}</b>닢</span></div>
-    <div class="boss-card"><span class="seal">${boss.name[0]}</span><div><b>${boss.name}</b><span>${boss.desc}</span></div></div>
+    <div class="boss-card"><span class="seal-mark">${boss.name[0]}</span><div><b>${boss.name}</b><span>${boss.desc}</span></div>${bossDemo(o.boss)}</div>
     ${dayTrack()}
     <div class="actions"><button class="btn btn-seal" id="go" data-autofocus>바느질 시작</button></div>`;
   const s = openModal(html, { center: true });
   on(s, '#go', once(() => { closeModal(); begin(); }));
+}
+
+/** A tiny picture for rules that read ambiguously in words. */
+function bossDemo(boss) {
+  if (boss !== 'knots') return '';
+  const cell = (x, fill, knot) => `<rect x="${x}" y="8" width="22" height="22" rx="3" fill="${fill}"/>${knot ? `<circle cx="${x + 11}" cy="19" r="4" fill="#e4ab2c"/>` : ''}`;
+  const row = (y0, cells) => `<g transform="translate(0 ${y0})">${cells}</g>`;
+  const before = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => cell(4 + i * 24, i === 3 ? '#6a2a24' : i === 6 ? '#ffffff14' : '#2f66b0', i === 3)).join('');
+  return `<div class="demo"><svg viewBox="0 0 200 62" aria-label="매듭이 든 줄을 채우면 함께 풀려요">${row(0, before)}
+    <text x="100" y="52" text-anchor="middle" font-size="10" fill="#ffd6cf">빈칸을 채우면 매듭까지 한 줄로 풀려요</text></svg></div>`;
 }
 
 function begin() {
@@ -434,7 +475,9 @@ function begin() {
   view.setTray(run.tray, fitsOf());
   renderHud();
   syncInput();
-  if (!meta.tutorial && run.day === 1 && run.orderIdx === 0) { hintStage = 1; hint('조각을 끌어 수틀에 놓으세요'); }
+  patchWarned = false;
+  if (!meta.tutorial && run.day === 1 && run.orderIdx === 0) { hintStage = 1; hint(`조각을 끌어 수틀에 놓으세요. 조각은 ${run.order.patchesLeft}개뿐이에요`); }
+  else if (run.order.boss === 'knots' && teachOnce('knots', '매듭이 든 줄도 나머지를 채우면 매듭째 풀려요', 4200)) { /* taught */ }
   else if (pendingHint) { hint(pendingHint, 3200); pendingHint = null; }
   if (ev.some((e) => e.type === 'stuck')) stuckHint();
   if (ev.some((e) => e.type === 'fail')) {
@@ -484,7 +527,7 @@ function showPreview(h) {
     setStreak(pv.streak, 'up');
     if (!tallyJob) {
       el.tally.classList.add('show', 'preview');
-      el.tally.innerHTML = tallyHtml(fmt(pv.chips), fmtMult(pv.mult), pv.completes ? '주문 완료!' : `+${fmt(pv.score)}`, pv.completes);
+      el.tally.innerHTML = tallyHtml(pv.seam, fmt(pv.chips), fmtMult(pv.mult), pv.completes ? '이걸로 주문 완료!' : `+${fmt(pv.score)}점`, pv.completes);
     }
     const key = `${h.i}:${h.r}:${h.c}`;
     if (key !== lastHoverKey) { lastHoverKey = key; sfx.hover(pv.lines.length); }
@@ -495,8 +538,9 @@ function showPreview(h) {
   }
 }
 
-function tallyHtml(chips, mult, label, win = false) {
-  return `<span class="chips"><small>칩</small><em>${chips}</em></span><span class="x">×</span><span class="mult"><small>배수</small><em>${mult}</em></span><span class="label${win ? ' win' : ''}">${label}</span>`;
+function tallyHtml(seam, chips, mult, label, win = false) {
+  const head = seam ? `<div class="seam">${SEAM_BY_ID[seam].name}<small>Lv.${seamLevel(seam)}</small></div>` : '';
+  return `${head}<div class="row"><span class="chips"><small>칩</small><em>${chips}</em></span><span class="x">×</span><span class="mult"><small>배수</small><em>${mult}</em></span></div><div class="label${win ? ' win' : ''}">${label}</div>`;
 }
 
 el.discardBtn.addEventListener('click', () => {
@@ -513,6 +557,9 @@ el.discardBtn.addEventListener('click', () => {
 });
 
 el.pause.addEventListener('click', () => { unlock(); sfx.ui(); showPause(); });
+const openSeamsFromHud = () => { unlock(); sfx.ui(); if (run && !busy && el.modal.hidden) showSeams(); };
+el.seamBtn.addEventListener('click', openSeamsFromHud);
+el.seamTag.addEventListener('click', openSeamsFromHud);
 
 async function playEvents(events) {
   for (const ev of events) {
@@ -520,6 +567,12 @@ async function playEvents(events) {
       case 'place':
         lastPlaced = ev;
         view.placePiece(ev);
+        el.patches.textContent = run.order.patchesLeft;
+        bump(el.patches);
+        if (run.phase === 'play' && run.order.patchesLeft <= 5 && run.order.patchesLeft > 0 && !patchWarned) {
+          patchWarned = true;
+          toast(`조각이 ${run.order.patchesLeft}개 남았어요`, 1800);
+        }
         sfx.drop(SHAPE_BY_ID[ev.piece.shape].size);
         haptic(8);
         break;
@@ -532,9 +585,12 @@ async function playEvents(events) {
       case 'score':
         scoreEvent(ev);
         break;
-      case 'tray':
+      case 'tray': {
         view.setTray(run.tray, fitsOf());
+        const t = run.tray.filter(Boolean);
+        if (t.length >= 2 && t.every((p) => p.color === t[0].color)) teachOnce('monoTray', '모두 같은 색 조각이에요. 한 줄을 한 색으로 채우면 단색 솔기!', 4000);
         break;
+      }
       case 'discard':
         view.setTray([null, null, null], [true, true, true], false);
         break;
@@ -582,17 +638,16 @@ function scoreEvent(ev) {
   const plan = view.clearLines(lines, ev.streak);
   plan.stitchTimes.forEach((t, k) => setTimeout(() => { sfx.stitch(k, ev.streak); haptic(12); }, t));
   view.shake(1 + lines.length * 0.6);
-  const mid = view.cellCenterApp(3.5, 3.5);
-  const cross = lines.some((l) => l.type === 'row') && lines.some((l) => l.type === 'col');
-  if (lines.length >= 2) {
-    const word = ['', '', '두 줄', '세 줄', '네 줄', '다섯 줄'][Math.min(5, lines.length)];
-    view.text(`${word}${cross ? ' 교차' : ''}!`, mid.x, mid.y + view.cell * 1.6, { size: 34 + lines.length * 4, color: '#f4ead3', dur: 1000, pop: 1.5 });
-    haptic([15, 30, 25]);
-  }
+  if (lines.length >= 2) haptic([15, 30, 25]);
   tallyJob = startTally(ev);
 }
 
-/** Balatro-style tally. Interruptible: a new clear flushes the old one straight to its slam. */
+/**
+ * Balatro-style tally laid over the hoop: the seam is named, then cells, streak and each tool
+ * step forward one at a time and the numbers climb. Tools get a long beat each so the player
+ * can see what every tool did; beats shorten as more tools fire. A new clear flushes the old
+ * tally straight to its result.
+ */
 function startTally(ev) {
   const { result, lines } = ev;
   const job = { flushed: false, after: [], wake: null };
@@ -604,76 +659,94 @@ function startTally(ev) {
   });
   const teach = !meta.tallyTaught;
   job.done = (async () => {
-    const sp = speed() * (teach ? 2 : 1);
-    const steps = result.steps;
+    const sp = speed() * (teach ? 1.5 : 1);
     let chips = 0;
     let mult = 0;
     const tally = el.tally;
     tally.classList.remove('preview');
     tally.classList.add('show');
-    tally.innerHTML = tallyHtml('0', '0', '');
+    tally.innerHTML = tallyHtml(result.seam, '0', '0', '');
     const cEl = $('.chips em', tally);
     const mEl = $('.mult em', tally);
     const lEl = $('.label', tally);
     const boardMid = view.cellCenterApp(3.5, 3.5);
-    const topY = view.boardRectInApp().y + view.cell * 1.2;
-    if (teach) hint('칩 × 배수 = 점수! 도구가 칩과 배수를 키워요', 3600);
-    const stepMs = Math.max(60, Math.min(120, 900 / steps.length)) * sp;
+    const topY = view.boardRectInApp().y + view.cell * 2.6;
+    if (teach) hint('지운 모양이 족보가 되고, 칩 × 배수가 점수예요', 4200);
+    let toolBeat = 420;
     let tick = 0;
-    for (const st of steps) {
+    for (const st of result.steps) {
       if (job.flushed) break;
       let label = '';
-      if (st.src === 'lines') { chips = st.chips; mult = st.mult; label = `${st.lines}줄 솔기 · ${st.cells}칸`; }
-      else if (st.src === 'streak') {
-        mult += st.mult;
-        label = `연속 ${st.streak}`;
-        view.text(`연속 ${st.streak}!`, boardMid.x, topY, { size: 30, color: '#e7b33a', dur: 900 });
-      } else if (st.src === 'perfect') {
+      let beat = 260;
+      if (st.src === 'seam') {
+        chips = st.chips;
+        mult = st.mult;
+        label = SEAM_BY_ID[st.seam].how;
+        beat = 420;
+        if (st.seam !== 'single') {
+          view.text(`${SEAM_BY_ID[st.seam].name}!`, boardMid.x, boardMid.y, { size: 40, color: '#f3ead6', dur: 1000, pop: 1.5 });
+        }
+        if (st.seam === 'perfect') { sfx.perfect(); view.confetti(50); }
+        sfx.stitch(2, ev.streak);
+      } else if (st.src === 'cells') {
         chips += st.chips;
-        label = '판을 다 비웠어요!';
-        sfx.perfect();
-        view.text('판 비움!', boardMid.x, boardMid.y, { size: 46, color: '#f4ead3', dur: 1200, pop: 1.6 });
-        view.confetti(40);
-      } else if (st.src === 'mono') {
-        mult *= st.xmult;
-        label = `단색 솔기 ×${st.xmult}`;
-        view.text('단색 솔기!', boardMid.x, boardMid.y - view.cell * 1.5, { size: 32, color: '#f5c75a', dur: 900 });
+        label = `지운 칸 ${st.cells}개 × 5`;
+      } else if (st.src === 'streak') {
+        mult += st.mult;
+        label = `연속 ${st.streak}번째 · 배수 +${st.mult}`;
+        beat = 320;
+        view.text(`연속 ${st.streak}!`, boardMid.x, topY, { size: 30, color: '#e2b54a', dur: 900 });
+        if (st.streak === 2) teachOnce('streak', '연달아 지우면 배수가 올라가요. 조각 3개 안에 다시 지우면 이어져요', 4000);
       } else if (st.src === 'boss') {
         mult *= st.xmult;
         label = `${R.BOSSES.strict.name} ×${st.xmult}`;
+        beat = 320;
       } else {
-        if (st.chips) { chips += st.chips; fireTool(st.slot, `+${st.chips} 칩`, 'chips'); }
-        if (st.mult) { mult += st.mult; fireTool(st.slot, `+${fmtMult(st.mult)} 배수`, 'mult'); }
-        if (st.xmult) { mult *= st.xmult; fireTool(st.slot, `×${fmtMult(st.xmult)}`, 'xmult'); }
-        label = TOOLS[st.src].name;
+        const name = TOOLS[st.src].name;
+        if (st.chips) { chips += st.chips; fireTool(st.slot, `+${st.chips} 칩`, 'chips'); label = `${name} 칩 +${st.chips}`; }
+        if (st.mult) { mult += st.mult; fireTool(st.slot, `+${fmtMult(st.mult)} 배수`, 'mult'); label = `${name} 배수 +${fmtMult(st.mult)}`; }
+        if (st.xmult) { mult *= st.xmult; fireTool(st.slot, `×${fmtMult(st.xmult)}`, 'xmult'); label = `${name} 배수 ×${fmtMult(st.xmult)}`; }
+        beat = toolBeat;
+        toolBeat = Math.max(200, toolBeat * 0.85);
       }
       cEl.textContent = fmt(chips);
       mEl.textContent = fmtMult(mult);
       lEl.textContent = label;
       if (st.chips) bump(cEl.parentNode);
       if (st.mult || st.xmult) bump(mEl.parentNode);
-      if (st.xmult) sfx.mult(tick); else sfx.tick(tick);
+      if (st.xmult) sfx.mult(tick); else if (st.src !== 'seam') sfx.tick(tick);
       tick++;
-      await sleep(stepMs);
+      await sleep(beat * sp);
     }
     cEl.textContent = fmt(result.chips);
     mEl.textContent = fmtMult(result.mult);
-    if (!job.flushed) await sleep(120 * sp);
 
     if (!run || !run.order) { if (tallyJob === job) tallyJob = null; return; } // left the game mid-tally
-    // slam
+    // the product counts up in the ribbon, then flies into the order total
+    lEl.classList.remove('win');
+    lEl.innerHTML = '<span class="total">= 0</span>';
+    const totalEl = $('.total', lEl);
+    const countMs = job.flushed ? 0 : Math.min(520, 220 + Math.log10(result.score + 1) * 80) * sp;
+    const t0 = performance.now();
+    while (!job.flushed) {
+      const k = Math.min(1, (performance.now() - t0) / Math.max(1, countMs));
+      totalEl.textContent = `= ${fmt(result.score * (1 - (1 - k) ** 3))}`;
+      if (k >= 1) break;
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    totalEl.textContent = `= ${fmt(result.score)}`;
+
     const power = Math.log10(Math.max(10, result.score)) - 1;
-    const size = Math.min(64, 30 + power * 10);
-    view.text(`+${fmt(result.score)}`, boardMid.x, boardMid.y, { size, color: '#e7b33a', dur: 800, rise: 20, pop: 1.6 });
     view.shake(1.5 + power * 1.4);
     sfx.slam(0.6 + power * 0.4);
     haptic(result.score > 2000 ? [20, 30, 40] : 25);
-    if (run && run.order && result.score >= Math.max(1000, run.order.target * 0.5)) flash();
+    if (result.score >= Math.max(1000, run.order.target * 0.5)) flash();
+    const tr = el.tally.getBoundingClientRect();
     const sr = el.score.getBoundingClientRect();
     const ar = app.getBoundingClientRect();
-    view.flyTo(boardMid.x, boardMid.y, sr.left - ar.left + 30, sr.top - ar.top + 14, '#e7b33a', Math.min(14, 4 + lines.length * 3));
+    view.flyTo(tr.left - ar.left + tr.width / 2, tr.bottom - ar.top - 16, sr.left - ar.left + 30, sr.top - ar.top + 14, '#e2b54a', Math.min(14, 4 + lines.length * 3));
     if (teach) { meta.tallyTaught = true; meta.tutorial = true; store.saveMeta(meta); }
-    if (!job.flushed) await sleep(380);
+    if (!job.flushed) await sleep(420);
     pendingScore = Math.max(0, pendingScore - result.score);
     if (run && run.order) setBar();
     bump(el.score);
@@ -681,6 +754,7 @@ function startTally(ev) {
     if (tallyJob === job) {
       tallyJob = null;
       el.tally.classList.remove('show');
+      if (run && run.order) el.seamName.textContent = seamLabel(signatureSeam());
       if (hintStage === 2 || hintStage === 1) { hintStage = 3; hint('목표 점수를 넘기면 주문 완료!', 2600); }
     }
   })();
@@ -759,6 +833,36 @@ function nextOrderPreview() {
   return `${dayName(n.day)} · ${kindName(n.orderIdx)} · 목표 <b>${fmt(n.target)}</b>${boss ? `<br><span class="boss-note">${boss.name}: ${boss.desc}</span>` : ''}`;
 }
 
+function patternCard(pt, i) {
+  const seam = SEAM_BY_ID[pt.id];
+  const lv = seamLevel(pt.id);
+  const now = seamValue(pt.id, lv);
+  const nxt = seamValue(pt.id, lv + 1);
+  const can = !pt.sold && run.coins >= PATTERN_PRICE;
+  return `<div class="card pattern${pt.sold ? ' sold' : ''}">
+    <div class="art">${seamIcon(pt.id)}</div>
+    <div class="min"><div class="name">${seam.name} 본 <span class="up">Lv.${lv} → ${lv + 1}</span></div>
+      <div class="desc">칩 ${now.chips}→${nxt.chips}, 배수 ${now.mult}→${nxt.mult}. ${seam.how}</div></div>
+    <button class="btn btn-small ${can ? 'btn-gold' : 'btn-ghost'} price" data-pattern="${i}" ${can ? '' : 'disabled'}>${pt.sold ? '팔림' : `${PATTERN_PRICE}닢`}</button></div>`;
+}
+
+function showSeams(back) {
+  const counts = (run && run.stats.seamCounts) || {};
+  const sig = run ? signatureSeam() : null;
+  const html = `<h2>솔기 족보</h2>
+    <p class="lead">지울 때마다 가장 높은 족보 하나로 점수를 매겨요. 바느질 본으로 레벨을 올린 족보를 노려 보세요.</p>
+    <div class="seam-table">${SEAMS.map((sm) => {
+      const lv = seamLevel(sm.id);
+      const v = seamValue(sm.id, lv);
+      return `<div class="seam-row${sm.id === sig && lv > 1 ? ' hot' : ''}"><span class="ic">${seamIcon(sm.id)}</span><span class="nm">${sm.name}<small>Lv.${lv}</small></span>
+        <span class="val"><span class="c">${v.chips}</span> × <span class="m">${v.mult}</span></span>
+        <span class="how">${sm.how}${run ? ` · 이번 판 ${counts[sm.id] || 0}번` : ''}</span></div>`;
+    }).join('')}</div>
+    <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>닫기</button></div>`;
+  const s = openModal(html);
+  on(s, '#back', () => (back ? back() : resumePhase()));
+}
+
 function showShop() {
   hint(null);
   renderHud();
@@ -772,7 +876,9 @@ function showShop() {
       const label = of.sold ? '팔림' : full ? '칸 없음' : `${price}닢`;
       return toolCard(of.id, { sold: of.sold, action: `<button class="btn btn-small ${can ? 'btn-gold' : 'btn-ghost'} price" data-buy="${i}" ${can ? '' : 'disabled'}>${label}</button>` });
     }).join('')}</div>
-    <div class="row-actions"><button class="btn btn-ghost btn-small" id="reroll" ${run.coins < sh.rerollCost ? 'disabled' : ''}>${glyph.reroll}새로 진열 · ${sh.rerollCost}닢</button></div>
+    <div class="section-label"><span><b>바느질 본</b> 사면 그 족보가 한 단계 올라요</span><button class="link" id="open-seams">족보표</button></div>
+    <div class="cards">${(sh.patterns || []).map((pt, i) => patternCard(pt, i)).join('')}</div>
+    <div class="row-actions"><button class="btn btn-ghost btn-small" id="reroll" ${run.coins < sh.rerollCost ? 'disabled' : ''}>${glyph.reroll}도구와 본 새로 진열 (${sh.rerollCost}닢)</button></div>
     <div class="section-label"><span>내 도구 ${run.tools.length}/${MAX_TOOLS}</span><span>눌러서 팔기</span></div>
     <div class="owned" id="owned"></div>
     <div class="next-order"><small>다음 주문</small><div>${nextOrderPreview()}</div></div>
@@ -810,6 +916,17 @@ function showShop() {
     showShop();
     fireTool(run.tools.length - 1, '획득!', 'xmult');
   }));
+  on(s, '[data-pattern]', once((e, n) => {
+    const res = R.buyPattern(run, +n.dataset.pattern);
+    if (!res.ok) { toast('엽전이 모자라요'); showShop(); return; }
+    sfx.buy();
+    haptic(15);
+    persist();
+    showShop();
+    toast(`${SEAM_BY_ID[res.seam].name} 레벨 ${res.level}`, 1800);
+    res.grown.forEach((slot) => fireTool(slot, '성장!', 'xmult'));
+  }));
+  on(s, '#open-seams', () => showSeams(() => showShop()));
   on(s, '#reroll', once(() => {
     if (R.reroll(run).ok) { sfx.coin(2); persist(); }
     showShop();
@@ -930,9 +1047,10 @@ function showHow(back) {
     <div class="how">
       <p><b>조각 놓기</b> — 아래 조각을 끌어 수틀에 놓아요. 놓을 때마다 남은 조각이 하나씩 줄어요.</p>
       <p><b>솔기 꿰매기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 사라지고 점수가 나요.</p>
-      <p><b>칩 × 배수</b> — 지운 칸마다 칩 5, 줄마다 칩 10. 배수는 지운 줄 수의 제곱에 연속 횟수를 더해요(두 줄 4, 세 줄 9). 한 줄이 한 색이면 단색 솔기 ×2.</p>
+      <p><b>솔기 족보</b> — 지운 모양이 족보가 돼요. 홑솔기(한 줄), 겹솔기(같은 방향 두 줄), 십자솔기(가로+세로), 단색 솔기(한 색으로 채운 줄), 세겹솔기(세 줄 이상), 쌍단색, 판 비움. 족보마다 칩과 배수가 정해져 있어요.</p>
+      <p><b>칩 × 배수</b> — 족보의 칩에 지운 칸마다 5를 더하고, 연달아 지우면 배수가 올라요. 도구가 칩과 배수를 더 키워요.</p>
       <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 놓을 데가 없으면 「조각 바꾸기」로 트레이를 새로 받아요.</p>
-      <p><b>장터</b> — 품삯으로 바느질 도구를 사요. 도구 조합이 점수 엔진이에요. 엽전을 모아 두면 ${R.INTEREST_PER}닢마다 이자가 1닢(최대 ${R.INTEREST_CAP}닢) 붙어요.</p>
+      <p><b>장터</b> — 품삯으로 바느질 도구와 바느질 본을 사요. 본은 족보 레벨을 올려 줘요. 한 족보를 키워 빌드를 만들어 보세요. 엽전을 모아 두면 ${R.INTEREST_PER}닢마다 이자가 1닢(최대 ${R.INTEREST_CAP}닢) 붙어요.</p>
     </div>
     <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>알겠어요</button></div>`;
   const s = openModal(html);

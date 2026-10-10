@@ -2,6 +2,7 @@
 // Usage: node tools/e2e.mjs [width height] [moves]
 import { chromium } from 'playwright-core';
 import { mkdir } from 'node:fs/promises';
+import { routeFonts } from './fonts-route.mjs';
 
 const W = +process.argv[2] || 390;
 const H = +process.argv[3] || 844;
@@ -12,8 +13,9 @@ await mkdir(out, { recursive: true });
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 2 });
 const errors = [];
+await routeFonts(page);
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+page.on('console', (m) => { if (m.type() === 'error' && !/local-fonts|fonts\.g/.test(m.text())) errors.push('console: ' + m.text()); });
 await page.goto('file://' + new URL('../dist/index.html', import.meta.url).pathname);
 await page.waitForTimeout(1600);
 await page.screenshot({ path: `${out}01-title-${W}x${H}.png` });

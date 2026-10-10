@@ -52,6 +52,15 @@ const art = {
   coins: () => S(`${[[16, 30], [30, 30], [23, 18]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="10" fill="${G}"/><circle cx="${x}" cy="${y}" r="10" fill="none" stroke="var(--gold-2)" stroke-width="1.5"/><rect x="${x - 3}" y="${y - 3}" width="6" height="6" fill="var(--indigo)"/>`).join('')}`),
   silk: () => S(`<path d="M8 14 Q24 6 40 14 L40 34 Q24 42 8 34Z" fill="#b77bd0"/><path d="M8 14 Q24 22 40 14" fill="none" stroke="#e2b9f0" stroke-width="2"/>
     <path d="M8 24 Q24 32 40 24" fill="none" stroke="#9a5fb4" stroke-width="1.5"/><circle cx="20" cy="28" r="2.5" fill="${G}"/><circle cx="30" cy="22" r="2" fill="${G}"/>`),
+  stamp: () => S(`<rect x="12" y="6" width="24" height="16" rx="3" fill="${W}"/><rect x="16" y="20" width="16" height="6" fill="${W2}"/>
+    <rect x="9" y="26" width="30" height="16" rx="2" fill="${R}"/><rect x="13" y="30" width="22" height="8" fill="none" stroke="var(--thread)" stroke-width="1.5"/>
+    <text x="24" y="37" font-size="7" text-anchor="middle" fill="var(--thread)" font-family="serif">匠</text>`),
+  book: () => S(`<path d="M8 10 h16 v30 h-16z" fill="var(--c-blue)"/><path d="M24 10 h16 v30 h-16z" fill="#244f8a"/>
+    <path d="M12 10 v30 M12 16 h-4 M12 24 h-4 M12 32 h-4" stroke="${G}" stroke-width="1.5"/><rect x="28" y="14" width="8" height="18" fill="${L}"/>
+    <path d="M30 18 h4 M30 22 h4 M30 26 h4" stroke="${W2}" stroke-width="1"/>`),
+  sleeve: () => S(`<path d="M6 10 L30 10 L42 30 L42 40 L18 40 Z" fill="var(--c-white)"/>
+    ${['var(--seal)', 'var(--gold)', 'var(--jade)', 'var(--c-blue)', 'var(--pink)'].map((c, i) => `<path d="M${10 + i * 4} 10 L${14 + i * 4} 10 L${26 + i * 4} 40 L${22 + i * 4} 40Z" fill="${c}"/>`).join('')}
+    <path d="M36 30 h6 v10 h-6z" fill="${R}"/>`),
   needle: () => S(`<path d="M10 40 L38 8" stroke="#dfe3ec" stroke-width="3" stroke-linecap="round"/><ellipse cx="36" cy="10" rx="1.2" ry="3" transform="rotate(42 36 10)" fill="var(--indigo)"/>
     <path d="M36 10 Q44 20 34 26 Q24 32 30 42" stroke="${R}" stroke-width="2" fill="none"/>`),
 };
@@ -65,5 +74,24 @@ export const glyph = {
   coin: S(`<circle cx="24" cy="24" r="18" fill="var(--gold)"/><circle cx="24" cy="24" r="18" fill="none" stroke="var(--gold-2)" stroke-width="3"/><rect x="18" y="18" width="12" height="12" fill="var(--indigo)"/>`),
   patch: S(`<rect x="8" y="8" width="32" height="32" rx="5" fill="var(--c-blue)"/><rect x="13" y="13" width="22" height="22" rx="3" fill="none" stroke="var(--thread)" stroke-width="2" stroke-dasharray="4 3"/>`),
   pause: S(`<rect x="12" y="10" width="8" height="28" rx="2" fill="currentColor"/><rect x="28" y="10" width="8" height="28" rx="2" fill="currentColor"/>`),
+  scroll: S(`<rect x="8" y="8" width="32" height="32" rx="2" fill="none" stroke="currentColor" stroke-width="3"/><path d="M14 16 h20 M14 24 h20 M14 32 h12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`),
   reroll: S(`<path d="M36 18 A14 14 0 1 0 38 28" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M30 14 L38 16 L36 24" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`),
 };
+
+/** Mini 5×5 hoop showing which lines make a seam hand. */
+export function seamIcon(id) {
+  const n = 5;
+  const u = 8;
+  const mixed = ['var(--c-blue)', 'var(--c-red)', 'var(--c-yellow)', 'var(--c-white)', '#4a4a5c'];
+  const rows = { single: [2], double: [1, 3], cross: [2], triple: [0, 2, 4], mono: [2], twinMono: [1, 3], perfect: [] }[id] || [];
+  const cols = id === 'cross' ? [2] : [];
+  const mono = id === 'mono' || id === 'twinMono';
+  let cells = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const on = rows.includes(r) || cols.includes(c);
+    const fill = on ? (mono ? 'var(--c-red)' : mixed[(r * 2 + c * 3) % 5]) : '#ffffff14';
+    cells += `<rect x="${4 + c * u}" y="${4 + r * u}" width="${u - 1.5}" height="${u - 1.5}" rx="1.2" fill="${fill}"/>`;
+  }
+  if (id === 'perfect') cells += '<path d="M24 10 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z" fill="var(--gold)"/>';
+  return `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${cells}</svg>`;
+}
