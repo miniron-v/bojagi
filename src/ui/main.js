@@ -192,6 +192,7 @@ function fireTool(slot, label, kind) {
   void node.offsetWidth;
   node.classList.add('fire');
   if (label) {
+    node.querySelectorAll('.pop').forEach((old) => old.remove());
     const pop = document.createElement('span');
     pop.className = `pop ${kind}`;
     pop.textContent = label;
@@ -267,12 +268,36 @@ function syncInput() {
   view.enabled = !!run && run.phase === 'play' && !busy && el.modal.hidden && !el.game.hidden;
 }
 
-function openModal(html, { center = false } = {}) {
+let modalClose = null;
+/**
+ * Sheets have three parts: a scrolling body, a footer pinned to the bottom (the sheet's last
+ * .actions/.row-actions block is moved there so the main button never needs scrolling), and,
+ * when `close` is given, a close button pinned to the top corner plus tap-outside to dismiss.
+ */
+function openModal(html, { center = false, close = null } = {}) {
   closeTip();
   view.cancelDrag();
   el.modal.classList.toggle('center', center);
-  el.sheet.innerHTML = html;
-  el.sheet.scrollTop = 0;
+  el.sheet.innerHTML = `<div class="sheet-body">${html}</div>`;
+  const body = el.sheet.firstElementChild;
+  const last = body.lastElementChild;
+  if (last && (last.classList.contains('actions') || last.classList.contains('row-actions'))) {
+    const foot = document.createElement('div');
+    foot.className = 'sheet-foot';
+    foot.appendChild(last);
+    el.sheet.appendChild(foot);
+  }
+  modalClose = close;
+  if (close) {
+    const x = document.createElement('button');
+    x.className = 'sheet-close';
+    x.setAttribute('aria-label', '닫기');
+    x.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+    x.addEventListener('click', () => { unlock(); sfx.ui(); close(); });
+    el.sheet.appendChild(x);
+  }
+  el.sheet.classList.toggle('closable', !!close);
+  body.scrollTop = 0;
   el.modal.hidden = false;
   // swallow the tail of a double tap that opened this sheet
   el.sheet.style.pointerEvents = 'none';
@@ -282,7 +307,11 @@ function openModal(html, { center = false } = {}) {
   if (first) setTimeout(() => first.focus({ preventScroll: true }), 60);
   return el.sheet;
 }
+el.modal.addEventListener('click', (e) => {
+  if (e.target === el.modal && modalClose && el.sheet.style.pointerEvents !== 'none') { sfx.ui(); modalClose(); }
+});
 function closeModal() {
+  modalClose = null;
   el.modal.hidden = true;
   el.sheet.innerHTML = '';
   syncInput();
@@ -691,7 +720,7 @@ function startTally(ev) {
         label = SEAM_BY_ID[st.seam].how;
         beat = 420;
         if (st.seam !== 'single') {
-          view.text(`${SEAM_BY_ID[st.seam].name}!`, boardMid.x, boardMid.y, { size: 40, color: '#f3ead6', dur: 1000, pop: 1.5 });
+          view.text(SEAM_BY_ID[st.seam].name, boardMid.x, boardMid.y, { size: 30, color: '#f3ead6', dur: 1100, rise: 14, tag: true });
         }
         if (st.seam === 'perfect') { sfx.perfect(); view.confetti(50); }
         sfx.stitch(2, ev.streak);
@@ -702,7 +731,7 @@ function startTally(ev) {
         mult += st.mult;
         label = `연속 ${st.streak}번째 · 배수 +${st.mult}`;
         beat = 320;
-        view.text(`연속 ${st.streak}!`, boardMid.x, topY, { size: 30, color: '#e2b54a', dur: 900 });
+        view.text(`연속 ${st.streak}`, boardMid.x, topY, { size: 26, color: '#e2b54a', dur: 900, rise: 20 });
         if (st.streak === 2) teachOnce('streak', '연달아 지우면 배수가 올라가요. 조각 3개 안에 다시 지우면 이어져요', 4000);
       } else if (st.src === 'boss') {
         mult *= st.xmult;
@@ -779,7 +808,7 @@ async function winSequence() {
   hint(null);
   await view.wait(200);
   const mid = view.cellCenterApp(3.5, 3.5);
-  view.text('주문 완료!', mid.x, mid.y, { size: 52, color: '#f4ead3', dur: 1400, pop: 1.4, rise: 10 });
+  view.text('주문 완료', mid.x, mid.y, { size: 40, color: '#e2b54a', dur: 1500, rise: 10, tag: true, weight: 800 });
   sfx.win();
   haptic([30, 40, 30, 40, 60]);
   view.confetti(80);
@@ -837,7 +866,7 @@ function showReward() {
 function nextOrderPreview() {
   const n = R.nextOrderOf(run);
   const boss = n.boss ? R.BOSSES[n.boss] : null;
-  return `${dayName(n.day)} · ${kindName(n.orderIdx)} · 목표 <b>${fmt(n.target)}</b>${boss ? `<br><span class="boss-note">${boss.name}: ${boss.desc}</span>` : ''}`;
+  return `${kindName(n.orderIdx)}, 목표 <b>${fmt(n.target)}</b>${boss ? ` <span class="boss-note">${boss.name}</span>` : ''}`;
 }
 
 function patternCard(pt, i) {
@@ -863,11 +892,9 @@ function showSeams(back) {
       const v = seamValue(sm.id, lv);
       return `<div class="seam-row${sm.id === sig && lv > 1 ? ' hot' : ''}"><span class="ic">${seamIcon(sm.id)}</span><span class="nm">${sm.name}<small>${sm.fixed ? '레벨 없음' : `Lv.${lv}`}</small></span>
         <span class="val"><span class="c">${v.chips}</span> × <span class="m">${v.mult}</span></span>
-        <span class="how">${sm.how}${run ? ` <span>(이번 판 ${counts[sm.id] || 0}번)</span>` : ''}</span></div>`;
-    }).join('')}</div>
-    <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>닫기</button></div>`;
-  const s = openModal(html);
-  on(s, '#back', () => (back ? back() : resumePhase()));
+        <span class="cond">${sm.how}${run && counts[sm.id] ? ` <span class="cnt">이번 판 ${counts[sm.id]}번</span>` : ''}</span></div>`;
+    }).join('')}</div>`;
+  openModal(html, { close: () => (back ? back() : resumePhase()) });
 }
 
 function showShop() {
@@ -888,8 +915,7 @@ function showShop() {
     <div class="row-actions"><button class="btn btn-ghost btn-small" id="reroll" ${run.coins < sh.rerollCost ? 'disabled' : ''}>${glyph.reroll}도구와 본 새로 진열 (${sh.rerollCost}닢)</button></div>
     <div class="section-label"><span>내 도구 ${run.tools.length}/${MAX_TOOLS}</span><span>눌러서 팔기</span></div>
     <div class="owned" id="owned"></div>
-    <div class="next-order"><small>다음 주문</small><div>${nextOrderPreview()}</div></div>
-    <div class="actions"><button class="btn btn-seal" id="leave" data-autofocus>주문 받으러 가기</button></div>`;
+    <div class="actions"><div class="next-order"><small>다음 주문</small> ${nextOrderPreview()}</div><button class="btn btn-seal" id="leave" data-autofocus>주문 받으러 가기</button></div>`;
   const s = openModal(html);
   const owned = $('#owned', s);
   owned.dataset.sig = '';
@@ -1042,7 +1068,7 @@ function showPause() {
     <div class="actions"><button class="btn btn-seal" id="resume" data-autofocus>계속하기</button>
     <button class="btn btn-ghost" id="how">하는 방법</button>
     <button class="btn btn-ghost" id="quit">처음으로 (진행 저장됨)</button></div>`;
-  const s = openModal(html, { center: true });
+  const s = openModal(html, { center: true, close: () => resumePhase() });
   bindSwitches(s);
   on(s, '#resume', () => resumePhase());
   on(s, '#how', () => showHow(() => { closeModal(); showPause(); }));
@@ -1060,18 +1086,27 @@ function showHow(back) {
       <p><b>장터</b> — 품삯으로 바느질 도구와 바느질 본을 사요. 본은 족보 레벨을 올려 줘요. 한 족보를 키워 빌드를 만들어 보세요. 엽전을 모아 두면 ${R.INTEREST_PER}닢마다 이자가 1닢(최대 ${R.INTEREST_CAP}닢) 붙어요.</p>
     </div>
     <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>알겠어요</button></div>`;
-  const s = openModal(html);
-  on(s, '#back', () => (back ? back() : closeModal()));
+  const done = () => (back ? back() : closeModal());
+  const s = openModal(html, { close: done });
+  on(s, '#back', done);
+}
+
+/** Compact codex tile: icon, name and one line; locked tiles show what unlocks them. */
+function codexCard(id) {
+  const def = TOOLS[id];
+  const seen = meta.discovered.includes(id) && isUnlocked(id, meta);
+  const p = !isUnlocked(id, meta) && progress(id, meta);
+  const desc = seen ? toolDesc(makeTool(id)) : p ? `${p.need} (${p.have}/${p.goal})` : '아직 못 만났어요';
+  return `<div class="codex-card r${def.rarity}${seen ? '' : ' locked'}"><span class="art">${toolArt(def)}</span>
+    <b>${seen ? def.name : p ? '잠김' : '???'}</b><span class="desc">${desc}</span></div>`;
 }
 
 function showCodex() {
   const lockedN = lockedIds(meta).length;
   const html = `<div class="eyebrow">도구 도감 ${meta.discovered.length}/${TOOL_IDS.length}</div><h2>바느질 도구</h2>
     ${lockedN ? `<p class="lead">잠긴 도구 ${lockedN}개는 조건을 채우면 장터에 나와요.</p>` : ''}
-    <div class="cards">${TOOL_IDS.map((id) => toolCard(id, { locked: !meta.discovered.includes(id) || !isUnlocked(id, meta) })).join('')}</div>
-    <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>닫기</button></div>`;
-  const s = openModal(html);
-  on(s, '#back', closeModal);
+    <div class="codex">${TOOL_IDS.map((id) => codexCard(id)).join('')}</div>`;
+  openModal(html, { close: closeModal });
 }
 
 function showRecords() {
@@ -1086,16 +1121,14 @@ function showRecords() {
       <div><small>꿰맨 솔기</small><b>${fmt(meta.clears)}</b></div>
     </div>
     ${days.length ? `<div class="section-label"><span>오늘의 의뢰</span><span>${meta.dailyStreak ? `${meta.dailyStreak.count}일 연속` : ''}</span></div>
-    <div class="daily-list">${days.map(([k, v]) => `<div><span>${k.split('-').slice(1).join('/')}</span><b>${v.label}</b></div>`).join('')}</div>` : ''}
-    <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>닫기</button></div>`;
-  const s = openModal(html, { center: true });
-  on(s, '#back', closeModal);
+    <div class="daily-list">${days.map(([k, v]) => `<div><span>${k.split('-').slice(1).join('/')}</span><b>${v.label}</b></div>`).join('')}</div>` : ''}`;
+  openModal(html, { center: true, close: closeModal });
 }
 
 // ---------- title buttons ----------
 function confirmReplace(title, go) {
   const s = openModal(`<h2>${title}</h2><p class="lead">이어 짓던 판은 사라져요. 그 판의 기록은 일지에 남아요.</p>
-    <div class="row-actions"><button class="btn btn-ghost" id="no">취소</button><button class="btn btn-seal" id="yes" data-autofocus>시작</button></div>`, { center: true });
+    <div class="row-actions"><button class="btn btn-ghost" id="no">취소</button><button class="btn btn-seal" id="yes" data-autofocus>시작</button></div>`, { center: true, close: closeModal });
   on(s, '#no', closeModal);
   on(s, '#yes', once(() => {
     // the abandoned run still counts toward records and unlock progress

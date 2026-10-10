@@ -51,7 +51,7 @@ await shot('boss-hud');
 await page.click('#btn-seams');
 await page.waitForTimeout(400);
 await shot('seams');
-await page.click('#back');
+await page.click('.sheet-close');
 await page.waitForTimeout(300);
 await page.click('#hud-tools .tool');
 await page.waitForTimeout(200);
@@ -81,6 +81,20 @@ if (ok) {
   await page.waitForTimeout(2200);
   await shot('over');
 }
+// shop with patterns
+await inject(`run.tools = ['thimble','manual'].map(id => ({ id, data: id==='manual'?{mult:2}:{} }));
+  run.seams.double = 3; run.coins = 14; run.phase = 'reward'; run.reward = { lines: [], total: 0 }; run.gift = null;
+  R.collectReward(run);`);
+await page.waitForTimeout(400);
+await shot('shop');
+await page.goto(url);
+await page.waitForTimeout(400);
+await page.click('#btn-codex');
+await page.waitForTimeout(400);
+await shot('codex');
+await page.click('.sheet-close');
+await page.waitForTimeout(300);
+await shot('after-close');
 console.log(JSON.stringify({ errors }));
 await browser.close();
 

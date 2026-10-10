@@ -289,11 +289,16 @@ export class View {
     }
   }
 
-  text(str, x, y, { size = 28, color = '#f4ead3', dur = 900, rise = 40, stroke = '#121829', delay = 0, pop = 1.5 } = {}) {
-    // keep the popped text inside the hoop width (Hangul glyphs are ~1em wide)
-    const maxW = (this.size || 300) * 0.92;
-    size = Math.min(size, maxW / (Math.max(1, [...str].length) * 0.95 * pop));
-    this.texts.push({ str, x, y, size, color, dur: dur * Math.max(0.6, this.speed), rise, stroke, t0: performance.now() + delay, pop });
+  /**
+   * Floating text. Plain text gets a soft shadow (no outline); `tag: true` sets it on a small
+   * silk label with a stitched edge, used for seam names and order results.
+   */
+  text(str, x, y, { size = 28, color = '#f3ead6', dur = 900, rise = 40, delay = 0, pop = 1.15, weight = 700, tag = false } = {}) {
+    // keep the text inside the hoop width (Hangul glyphs are ~1em wide)
+    const maxW = (this.size || 300) * (tag ? 0.8 : 0.92);
+    pop = Math.min(pop, 1.25);
+    size = Math.min(size, maxW / (Math.max(1, [...str].length) * 0.98 * pop));
+    this.texts.push({ str, x, y, size, color, weight, tag, dur: dur * Math.max(0.6, this.speed), rise, t0: performance.now() + delay, pop });
   }
 
   // ---------- render ----------
@@ -561,15 +566,32 @@ export class View {
       g.globalAlpha = a;
       g.translate(tx.x, tx.y - tx.rise * easeOut(t));
       g.scale(s, s);
-      g.font = `${tx.size}px 'Song Myung', 'Nanum Myeongjo', serif`;
+      g.font = `${tx.weight} ${tx.size}px Hahmlet, 'Nanum Myeongjo', serif`;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      g.lineJoin = 'round';
-      g.lineWidth = Math.max(3, tx.size / 6);
-      g.strokeStyle = tx.stroke;
-      g.strokeText(tx.str, 0, 0);
+      if (tx.tag) {
+        const w = g.measureText(tx.str).width + tx.size * 1.3;
+        const h = tx.size * 1.75;
+        g.shadowColor = 'rgba(0,0,0,.45)';
+        g.shadowBlur = tx.size * 0.5;
+        g.shadowOffsetY = tx.size * 0.15;
+        roundRect(g, -w / 2, -h / 2, w, h, 4);
+        g.fillStyle = '#1f2a4f';
+        g.fill();
+        g.shadowColor = 'transparent';
+        g.setLineDash([tx.size * 0.22, tx.size * 0.16]);
+        g.lineWidth = Math.max(1, tx.size * 0.06);
+        g.strokeStyle = 'rgba(226,181,74,.75)';
+        roundRect(g, -w / 2 + 4, -h / 2 + 4, w - 8, h - 8, 2);
+        g.stroke();
+        g.setLineDash([]);
+      } else {
+        g.shadowColor = 'rgba(20,27,51,.85)';
+        g.shadowBlur = Math.max(4, tx.size * 0.35);
+        g.shadowOffsetY = Math.max(1, tx.size * 0.06);
+      }
       g.fillStyle = tx.color;
-      g.fillText(tx.str, 0, 0);
+      g.fillText(tx.str, 0, tx.size * 0.04);
       g.restore();
       return true;
     });

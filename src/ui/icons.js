@@ -78,20 +78,55 @@ export const glyph = {
   reroll: S(`<path d="M36 18 A14 14 0 1 0 38 28" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M30 14 L38 16 L36 24" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`),
 };
 
-/** Mini 5×5 hoop showing which lines make a seam hand. */
+/**
+ * Seam hand icon: a 6×6 hoop at the instant the seam is sewn. Lines that clear together sit
+ * next to each other, glow, and carry a running stitch; the rest of the board is dimmed.
+ */
 export function seamIcon(id) {
-  const n = 5;
-  const u = 8;
-  const mixed = ['var(--c-blue)', 'var(--c-red)', 'var(--c-yellow)', 'var(--c-white)', '#4a4a5c'];
-  const rows = { single: [2], double: [1, 3], cross: [2], triple: [0, 2, 4], mono: [2], twinMono: [1, 3], perfect: [] }[id] || [];
-  const cols = id === 'cross' ? [2] : [];
-  const mono = id === 'mono' || id === 'twinMono';
-  let cells = '';
+  const n = 6;
+  const u = 6.6;
+  const o = 4.2;
+  const mixed = ['var(--c-blue)', 'var(--c-red)', 'var(--c-yellow)', 'var(--c-white)', '#55556a'];
+  const spec = {
+    single: { rows: [3] },
+    double: { rows: [2, 3] },
+    triple: { rows: [2, 3, 4] },
+    cross: { rows: [3], cols: [2] },
+    mono: { rows: [3], mono: ['var(--c-red)'] },
+    twinMono: { rows: [2, 3], mono: ['var(--c-blue)', 'var(--c-red)'] },
+    perfect: { rows: [3], empty: true },
+  }[id] || { rows: [] };
+  const rows = spec.rows || [];
+  const cols = spec.cols || [];
+  // leftover cloth that stays on the board (fixed pattern so icons read consistently)
+  const rest = new Set(['0,1', '1,0', '1,1', '0,4', '1,5', '4,0', '5,0', '5,1', '4,5', '5,4', '5,5', '2,0', '4,3', '0,2']);
+  let out = `<rect x="1.5" y="1.5" width="45" height="45" rx="3" fill="#ebdfc5" opacity=".14"/>`;
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-    const on = rows.includes(r) || cols.includes(c);
-    const fill = on ? (mono ? 'var(--c-red)' : mixed[(r * 2 + c * 3) % 5]) : '#ffffff14';
-    cells += `<rect x="${4 + c * u}" y="${4 + r * u}" width="${u - 1.5}" height="${u - 1.5}" rx="1.2" fill="${fill}"/>`;
+    const x = o + c * u;
+    const y = o + r * u;
+    const lit = rows.includes(r) || cols.includes(c);
+    let fill;
+    let op = 1;
+    if (lit) {
+      const mi = rows.indexOf(r);
+      fill = spec.mono && mi >= 0 ? spec.mono[Math.min(mi, spec.mono.length - 1)] : mixed[(r * 2 + c * 3) % 5];
+    } else if (!spec.empty && rest.has(`${r},${c}`)) { fill = mixed[(r + c * 2) % 5]; op = 0.32; }
+    else { fill = '#ffffff'; op = 0.07; }
+    out += `<rect x="${x + 0.4}" y="${y + 0.4}" width="${u - 0.8}" height="${u - 0.8}" rx="1.2" fill="${fill}" opacity="${op}"/>`;
   }
-  if (id === 'perfect') cells += '<path d="M24 10 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z" fill="var(--gold)"/>';
-  return `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${cells}</svg>`;
+  const glow = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1.5" fill="none" stroke="var(--gold)" stroke-width="1.1" opacity=".9"/>`;
+  const stitchH = (r) => `<line x1="${o - 1.5}" y1="${o + (r + 0.5) * u}" x2="${o + n * u + 1.5}" y2="${o + (r + 0.5) * u}" stroke="#f3ead6" stroke-width="1.1" stroke-dasharray="2 1.5" stroke-linecap="round" opacity=".95"/>`;
+  const stitchV = (c) => `<line x1="${o + (c + 0.5) * u}" y1="${o - 1.5}" x2="${o + (c + 0.5) * u}" y2="${o + n * u + 1.5}" stroke="#f3ead6" stroke-width="1.1" stroke-dasharray="2 1.5" stroke-linecap="round" opacity=".95"/>`;
+  if (rows.length) {
+    const r0 = Math.min(...rows);
+    out += glow(o - 0.6, o + r0 * u - 0.6, n * u + 1.2, rows.length * u + 1.2);
+  }
+  for (const c of cols) out += glow(o + c * u - 0.6, o - 0.6, u + 1.2, n * u + 1.2);
+  for (const r of rows) out += stitchH(r);
+  for (const c of cols) out += stitchV(c);
+  if (spec.empty) {
+    const star = (cx, cy, k) => `<path d="M${cx} ${cy - k} L${cx + k * 0.3} ${cy - k * 0.3} L${cx + k} ${cy} L${cx + k * 0.3} ${cy + k * 0.3} L${cx} ${cy + k} L${cx - k * 0.3} ${cy + k * 0.3} L${cx - k} ${cy} L${cx - k * 0.3} ${cy - k * 0.3}Z" fill="var(--gold)"/>`;
+    out += star(13, 12, 4.5) + star(36, 37, 3.5) + star(37, 11, 2.5);
+  }
+  return `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${out}</svg>`;
 }

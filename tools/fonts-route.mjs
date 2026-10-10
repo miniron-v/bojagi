@@ -3,7 +3,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 
 const root = new URL('../node_modules/@fontsource/', import.meta.url).pathname;
-const sheets = [['hahmlet', [400, 700, 800]], ['gowun-batang', [400, 700]]];
+const sheets = [['hahmlet', [400, 500, 600, 700, 800]]];
 
 export async function routeFonts(page) {
   if (!existsSync(root)) return;
