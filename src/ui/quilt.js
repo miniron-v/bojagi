@@ -57,5 +57,5 @@ export function shareText(run, dateLabel) {
     if (i % cols === cols - 1) grid += '\n';
   });
   const best = Math.floor(run.stats.bestHand).toLocaleString('ko-KR');
-  return `보자기 공방 · 오늘의 의뢰 ${dateLabel}\n${grid}최고 한 땀 ${best}`;
+  return `누빔 공방 · 오늘의 의뢰 ${dateLabel}\n${grid}최고 한 땀 ${best}`;
 }

@@ -87,6 +87,7 @@ await inject(`run.tools = ['thimble','manual'].map(id => ({ id, data: id==='manu
   R.collectReward(run);`);
 await page.waitForTimeout(400);
 await shot('shop');
+await page.evaluate(() => localStorage.setItem('bojagi.meta.v1', JSON.stringify({ runs: 3, discovered: ['thimble', 'iron', 'sleeve'], spotted: ['thimble', 'iron', 'sleeve', 'pouch', 'lamp', 'scissors', 'thread_red'], bestDay: 2, monos: 3 })));
 await page.goto(url);
 await page.waitForTimeout(400);
 await page.click('#btn-codex');

@@ -59,10 +59,10 @@ test('scoring: plain placement', () => {
 });
 
 test('scoring: single line, streak, mono seam', () => {
-  assert.equal(evaluate(baseCtx(), []).score, 70); // 홑솔기 (30 + 8×5) × 1
+  assert.equal(evaluate(baseCtx(), []).score, 70); // 홈질 (30 + 8×5) × 1
   assert.equal(evaluate(baseCtx({ streak: 3 }), []).score, 210); // ×(1+2)
   assert.equal(evaluate(baseCtx({ monoLines: 1 }), []).score, 440); // 단색 (70+40) × 4
-  // 홑솔기 never levels; a leveled 겹솔기 outscores it
+  // 홈질 never levels
   assert.equal(evaluate(baseCtx({ levels: { single: 3 } }), []).score, 70);
 });
 
@@ -210,7 +210,7 @@ test('seams: ranking picks the highest hand', async () => {
   // both cross (80×4) and mono (70×4) apply: the more valuable one is scored
   assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1 }), 'cross');
   assert.equal(judgeSeam({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1, perfect: false }, { mono: 3 }), 'mono');
-  // a leveled 겹솔기 is not overridden by an incidental single-color line
+  // a leveled 박음질 is not overridden by an incidental single-color line
   assert.equal(judgeSeam({ lineCount: 2, rowLines: 2, colLines: 0, monoLines: 1, perfect: false }, { double: 5 }), 'double');
   assert.equal(j({ lineCount: 1, rowLines: 1, monoLines: 1 }), 'mono');
   assert.equal(j({ lineCount: 3, rowLines: 3, monoLines: 1 }), 'triple');

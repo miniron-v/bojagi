@@ -67,6 +67,14 @@ function persist() {
   else store.saveRun(run);
 }
 
+/** Tools the player has seen in the market or as a gift; shown greyed in the codex until owned. */
+function spot(ids) {
+  meta.spotted ||= [];
+  let changed = false;
+  for (const id of ids) if (!meta.spotted.includes(id)) { meta.spotted.push(id); changed = true; }
+  if (changed) store.saveMeta(meta);
+}
+
 function discover(id) {
   if (!meta.discovered.includes(id)) {
     meta.discovered.push(id);
@@ -354,7 +362,7 @@ function titleScreen() {
   if (valid) {
     // between orders (gift/shop) the next order is what the player returns to
     const at = ['gift', 'shop'].includes(save.phase) ? R.nextOrderOf(save) : { day: save.day, orderIdx: save.orderIdx };
-    const what = save.phase === 'victory' ? '보자기 완성 · 밤샘 작업 가능' : `${dayName(at.day)} · ${kindName(at.orderIdx)}`;
+    const what = save.phase === 'victory' ? '누비 완성 · 밤샘 작업 가능' : `${dayName(at.day)} · ${kindName(at.orderIdx)}`;
     $('.sub', cont).textContent = what + (save.mode === 'daily' ? ' · 오늘의 의뢰' : '');
   }
   const { key } = R.dailySeed();
@@ -441,6 +449,7 @@ function toolCard(id, { action = '', sold = false, locked = false, inst = null }
 
 function showGift() {
   hint(null);
+  spot(run.gift);
   const html = `<div class="eyebrow">첫 손님의 선물</div><h2>도구를 하나 고르세요</h2>
     <p class="lead">도구는 칩과 배수를 키워 줘요. ${MAX_TOOLS}개까지 들 수 있고 장터에서 사고팔 수 있어요.</p>
     <div class="cards">${run.gift.map((id, i) => toolCard(id, { action: `<button class="btn btn-gold btn-small" data-gift="${i}" ${i === 0 ? 'data-autofocus' : ''}>고르기</button>` })).join('')}</div>`;
@@ -662,7 +671,7 @@ async function playEvents(events) {
       case 'tray': {
         view.setTray(run.tray, fitsOf());
         const t = run.tray.filter(Boolean);
-        if (t.length >= 2 && t.every((p) => p.color === t[0].color)) teachOnce('monoTray', '같은 색 조각들! 한 줄을 한 색으로 채우면 단색 솔기', 4000);
+        if (t.length >= 2 && t.every((p) => p.color === t[0].color)) teachOnce('monoTray', '같은 색 조각들! 한 줄을 한 색으로 채우면 공그르기', 4000);
         break;
       }
       case 'discard':
@@ -930,8 +939,8 @@ function patternCard(pt, i) {
 function showSeams(back) {
   const counts = (run && run.stats.seamCounts) || {};
   const sig = run ? signatureSeam() : null;
-  const html = `<h2>솔기 족보</h2>
-    <p class="lead">지울 때마다 해당하는 족보 중 가장 비싼 하나로 점수를 매겨요. 홑솔기는 자라지 않으니, 본으로 다른 족보를 키워 노려 보세요.</p>
+  const html = `<h2>바느질 족보</h2>
+    <p class="lead">지울 때마다 해당하는 족보 중 가장 비싼 하나로 점수를 매겨요. 홈질은 자라지 않으니, 본으로 다른 기법을 키워 노려 보세요.</p>
     <div class="seam-table">${SEAMS.map((sm) => {
       const lv = seamLevel(sm.id);
       const v = seamValue(sm.id, lv);
@@ -944,6 +953,7 @@ function showSeams(back) {
 
 function showShop() {
   hint(null);
+  spot(run.shop.offers.map((o) => o.id));
   renderHud();
   const sh = run.shop;
   const full = run.tools.length >= MAX_TOOLS;
@@ -1034,13 +1044,13 @@ function showEnd(victory, ev) {
   const unlockedNote = endInfo.unlocked && endInfo.unlocked.length
     ? `<div class="unlock-note">${endInfo.unlocked.map((id) => `<span class="art">${toolArt(TOOLS[id])}</span>`).join('')}<div><b>새 도구가 장터에 나와요</b><span>${endInfo.unlocked.map((id) => TOOLS[id].name).join(', ')}</span></div></div>`
     : '';
-  const quilt = `<figure class="quilt"><canvas id="quilt" aria-label="이번 판의 조각보"></canvas><figcaption>이번 판의 조각보</figcaption></figure>`;
+  const quilt = `<figure class="quilt"><canvas id="quilt" aria-label="이번 판의 조각누비"></canvas><figcaption>이번 판의 조각누비</figcaption></figure>`;
   const share = run.mode === 'daily' ? '<button class="btn btn-ghost" id="share">결과 복사하기</button>' : '';
   let html;
   if (victory) {
     view.confetti(120);
     sfx.perfect();
-    html = `<div class="eyebrow">${R.DAYS}일의 장이 끝났어요</div><h2>보자기 완성</h2>
+    html = `<div class="eyebrow">${R.DAYS}일의 장이 끝났어요</div><h2>누비 완성</h2>
       <p class="lead">손님들이 모두 만족했어요. 밤을 새워 더 큰 주문에 도전할 수도 있어요.</p>
       <div class="end-body">${quilt}${grid}</div>${unlockedNote}
       <div class="actions"><button class="btn btn-gold" id="endless" data-autofocus>밤샘 작업 이어가기</button>${share}
@@ -1123,11 +1133,11 @@ function showPause() {
 }
 
 function showHow(back) {
-  const html = `<div class="eyebrow">하는 방법</div><h2>조각보 짓기</h2>
+  const html = `<div class="eyebrow">하는 방법</div><h2>조각 누비기</h2>
     <div class="how">
       <p><b>조각 놓기</b> — 아래 조각을 끌어 수틀에 놓아요. 놓을 때마다 남은 조각이 하나씩 줄어요.</p>
-      <p><b>솔기 꿰매기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 사라지고 점수가 나요.</p>
-      <p><b>솔기 족보</b> — 지운 모양이 족보가 돼요. 홑솔기(한 줄), 겹솔기(같은 방향 두 줄), 십자솔기(가로+세로), 단색 솔기(한 색으로 채운 줄), 세겹솔기(세 줄 이상), 쌍단색, 판 비움. 족보마다 칩과 배수가 정해져 있어요.</p>
+      <p><b>줄 누비기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 누벼지고 점수가 나요.</p>
+      <p><b>바느질 족보</b> — 지운 모양에 따라 기법이 정해져요. 홈질(한 줄), 박음질(같은 방향 두 줄), 십자수(가로+세로), 공그르기(한 색으로 채운 줄), 세누비(세 줄 이상), 쌈솔(한 색 줄 둘 이상), 온누비(판을 다 비움). 기법마다 칩과 배수가 정해져 있어요.</p>
       <p><b>칩 × 배수</b> — 족보의 칩에 지운 칸마다 5를 더하고, 연달아 지우면 배수가 올라요. 도구가 칩과 배수를 더 키워요.</p>
       <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 놓을 데가 없으면 「조각 바꾸기」로 트레이를 새로 받아요.</p>
       <p><b>장터</b> — 품삯으로 바느질 도구와 바느질 본을 사요. 본은 족보 레벨을 올려 줘요. 한 족보를 키워 빌드를 만들어 보세요. 엽전을 모아 두면 ${R.INTEREST_PER}닢마다 이자가 1닢(최대 ${R.INTEREST_CAP}닢) 붙어요.</p>
@@ -1139,19 +1149,31 @@ function showHow(back) {
 }
 
 /** Compact codex tile: icon, name and one line; locked tiles show what unlocks them. */
+/**
+ * Codex tile, four states: owned (full colour), spotted in the market (greyed but readable),
+ * locked behind an unlock goal, or not met yet.
+ */
 function codexCard(id) {
   const def = TOOLS[id];
-  const seen = meta.discovered.includes(id) && isUnlocked(id, meta);
-  const p = !isUnlocked(id, meta) && progress(id, meta);
-  const desc = seen ? toolDesc(makeTool(id)) : p ? `${p.need} (${p.have}/${p.goal})` : RARITY_NAME[def.rarity];
-  return `<div class="codex-card r${def.rarity}${seen ? '' : ' locked'}"><span class="art">${toolArt(def)}</span>
-    <b>${seen ? def.name : p ? '잠김' : '?'}</b><span class="desc">${desc}</span></div>`;
+  const owned = meta.discovered.includes(id);
+  const spotted = !owned && (meta.spotted || []).includes(id);
+  const p = !owned && !isUnlocked(id, meta) && progress(id, meta);
+  let state = 'unknown';
+  if (owned) state = 'owned';
+  else if (p) state = 'locked';
+  else if (spotted) state = 'spotted';
+  const name = state === 'owned' || state === 'spotted' ? def.name : state === 'locked' ? '잠김' : '?';
+  const desc = state === 'owned' || state === 'spotted' ? toolDesc(makeTool(id))
+    : state === 'locked' ? `${p.need} (${p.have}/${p.goal})` : RARITY_NAME[def.rarity];
+  return `<div class="codex-card r${def.rarity} ${state}"><span class="art">${toolArt(def)}</span>
+    <b>${name}${state === 'spotted' ? '<small>본 적 있음</small>' : ''}</b><span class="desc">${desc}</span></div>`;
 }
 
 function showCodex() {
   const lockedN = lockedIds(meta).length;
-  const html = `<div class="eyebrow">도구 도감 ${meta.discovered.length}/${TOOL_IDS.length}</div><h2>바느질 도구</h2>
-    ${lockedN ? `<p class="lead">잠긴 도구 ${lockedN}개는 조건을 채우면 장터에 나와요.</p>` : ''}
+  const spottedN = (meta.spotted || []).filter((id) => !meta.discovered.includes(id)).length;
+  const html = `<div class="eyebrow">도구 도감</div><h2>바느질 도구</h2>
+    <p class="lead">써 본 도구 ${meta.discovered.length}/${TOOL_IDS.length}${spottedN ? ` · 장터에서 본 도구 ${spottedN}` : ''}<br>사서 써 보면 도감이 채워져요.${lockedN ? ` 잠긴 도구 ${lockedN}개는 조건을 채우면 장터에 나와요.` : ''}</p>
     <div class="codex">${TOOL_IDS.map((id) => codexCard(id)).join('')}</div>`;
   openModal(html, { close: closeModal });
 }
@@ -1161,7 +1183,7 @@ function showRecords() {
   const html = `<div class="eyebrow">공방 일지</div><h2>지금까지</h2>
     <div class="stat-grid">
       <div><small>지은 판</small><b>${meta.runs}</b></div>
-      <div><small>완성한 보자기</small><b>${meta.wins}</b></div>
+      <div><small>완성한 누비</small><b>${meta.wins}</b></div>
       <div><small>최고 도달</small><b>${meta.bestDay ? bestDayLabel(meta.bestDay) : '-'}</b></div>
       <div><small>최고 한 땀</small><b>${fmt(meta.bestHand)}</b></div>
       <div><small>최고 연속</small><b>${meta.bestStreak}</b></div>

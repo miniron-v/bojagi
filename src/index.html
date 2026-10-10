@@ -1,6 +1,6 @@
-<title>보자기 공방</title>
+<title>누빔 공방</title>
 <meta name="theme-color" content="#121829">
-<meta name="description" content="조각을 이어 줄을 꿰매고, 바느질 도구로 점수 엔진을 만드는 퍼즐 로그라이트">
+<meta name="description" content="천 조각을 이어 줄마다 누비고, 바느질 기법과 도구로 점수를 키우는 퍼즐 로그라이트">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hahmlet:wght@400;500;600;700;800&display=swap">
@@ -8,7 +8,7 @@
 <div id="app">
   <section id="title" class="screen" aria-label="시작 화면">
     <div>
-      <h1 class="logo">보자기 공방<small>조각을 이어 손님의 보자기를 지어요</small></h1>
+      <h1 class="logo">누빔 공방<small>천 조각을 잇고 누벼 손님의 주문을 지어요</small></h1>
     </div>
     <canvas id="title-art" aria-hidden="true"></canvas>
     <div class="title-menu">
@@ -29,7 +29,7 @@
     <header class="hud-top">
       <div class="where"><span class="day-label">장날 <b id="hud-day">1</b><small id="hud-daymax">/4</small></span><span id="hud-kind" class="kind">작은 주문</span></div>
       <div class="hud-buttons">
-        <button class="icon-btn" id="btn-seams" aria-label="솔기 족보 보기"></button>
+        <button class="icon-btn" id="btn-seams" aria-label="바느질 족보 보기"></button>
         <button class="icon-btn" id="btn-pause" aria-label="잠시 쉬기"></button>
       </div>
     </header>
@@ -39,7 +39,7 @@
       <div class="bar" id="hud-bar"><div class="ghost" id="hud-ghost"></div><div class="fill" id="hud-fill"></div><span class="seal-stamp" aria-hidden="true">완료</span></div>
       <div class="stats">
         <div class="stat coins"><span id="ic-coin"></span><b id="hud-coins">0</b></div>
-        <button class="stat seam-tag" id="hud-seam" aria-label="가장 공들인 족보">족보 <b id="hud-seam-name">홑솔기</b></button>
+        <button class="stat seam-tag" id="hud-seam" aria-label="가장 공들인 족보">족보 <b id="hud-seam-name">홈질</b></button>
         <div class="stat streak" id="hud-streak" hidden>연속 <b>0</b></div>
         <div class="peek" id="peek" aria-hidden="true"></div>
       </div>

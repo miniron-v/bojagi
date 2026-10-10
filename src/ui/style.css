@@ -1,4 +1,4 @@
-/* 보자기 공방 — night needlework room.
+/* 누빔 공방 — night needlework room.
    Ground: indigo-dyed (쪽) cloth. Panels: silk with a woven sheen and a running-stitch edge,
    corners kept tight like cut cloth rather than rounded app cards.
    The one loud motif is 색동 (rainbow sleeve stripes): it marks the top of the order card and of
@@ -197,7 +197,8 @@ b, .num { font-variant-numeric: tabular-nums; }
 }
 
 .stage { position: relative; flex: 1; min-height: 0; margin-top: 6px; touch-action: none; }
-#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+/* canvases get their own compositing layers so DOM effects around them never make them repaint */
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; transform: translateZ(0); will-change: transform; }
 
 /* tally: while a seam is counted it covers the order card, right above the tools that fire */
 .tally {
@@ -247,7 +248,7 @@ b, .num { font-variant-numeric: tabular-nums; }
 .btn-discard.urge { animation: urge 1s ease-in-out infinite; }
 @keyframes urge { 50% { transform: scale(1.04); box-shadow: 0 0 0 5px #c63d3155; } }
 
-#fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
+#fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; transform: translateZ(0); will-change: transform; }
 
 /* ---------- Sheets ---------- */
 .modal { position: absolute; inset: 0; z-index: 30; display: flex; align-items: flex-end; justify-content: center; background: #090d1ccc; }
@@ -468,8 +469,13 @@ b, .num { font-variant-numeric: tabular-nums; }
 .codex-card .desc { font-size: 12px; color: var(--muted); line-height: 1.4; }
 .codex-card.r2 { outline-color: #8db0ec66; }
 .codex-card.r3 { outline-color: #e2b54a99; }
-.codex-card.locked .art svg { opacity: .2; filter: grayscale(1); }
-.codex-card.locked b { color: var(--dim); }
+.codex-card.spotted .art svg { opacity: .55; filter: grayscale(1); }
+.codex-card.spotted b { color: var(--muted); }
+.codex-card.spotted b small { display: block; font-weight: 500; font-size: 11px; color: var(--dim); }
+.codex-card.spotted .desc { color: var(--dim); }
+.codex-card.locked .art svg, .codex-card.unknown .art svg { opacity: .2; filter: grayscale(1) brightness(.6); }
+.codex-card.locked b, .codex-card.unknown b { color: var(--dim); }
+.codex-card.owned { background: #ffffff10; }
 
 
 /* short phones: keep the whole market on one screen */
@@ -506,7 +512,8 @@ b, .num { font-variant-numeric: tabular-nums; }
 .proj { font-family: var(--font-display); font-weight: 700; font-size: 18px; color: #e2b54a; opacity: 0; transform: translateX(-6px); transition: opacity .15s, transform .15s; white-space: nowrap; }
 .order.previewing .proj, .order.peek-win .proj { opacity: 1; transform: none; }
 .order.peek-win .proj { color: var(--good); }
-.bar .ghost { background: repeating-linear-gradient(-60deg, #e2b54a99 0 5px, #e2b54a55 5px 9px); background-size: 20px 100%; animation: ghostRun .6s linear infinite; }
+.bar .ghost { background: repeating-linear-gradient(-60deg, #e2b54a99 0 5px, #e2b54a55 5px 9px); background-size: 20px 100%; }
+.order.previewing .bar .ghost, .order.peek-win .bar .ghost { animation: ghostRun .6s linear infinite; }
 .bar .ghost.win { background: repeating-linear-gradient(-60deg, #79c08edd 0 5px, #79c08e77 5px 9px); background-size: 20px 100%; }
 @keyframes ghostRun { to { background-position: 20px 0; } }
 .bar { overflow: visible; }
@@ -519,8 +526,10 @@ b, .num { font-variant-numeric: tabular-nums; }
 }
 .order.peek-win .seal-stamp { animation: stampIn .28s cubic-bezier(.3,1.6,.5,1) forwards; }
 @keyframes stampIn { to { opacity: 1; transform: translateY(-50%) scale(1) rotate(-8deg); } }
-.order.peek-win { box-shadow: 0 0 0 2px var(--good), 0 0 26px #79c08e66, 0 6px 16px #0005; animation: winGlow .9s ease-in-out infinite; }
-@keyframes winGlow { 50% { box-shadow: 0 0 0 2px var(--good), 0 0 38px #79c08e99, 0 6px 16px #0005; } }
+.order::after { content: ''; position: absolute; inset: 0; border-radius: var(--cut); pointer-events: none; opacity: 0;
+  box-shadow: 0 0 0 2px var(--good), 0 0 30px #79c08e88; transition: opacity .15s; }
+.order.peek-win::after { opacity: 1; animation: winGlow .9s ease-in-out infinite; }
+@keyframes winGlow { 50% { opacity: .55; } }
 
 .peek {
   position: absolute; inset: -3px -3px; display: flex; z-index: 2; align-items: center; gap: 10px; padding: 0 10px;

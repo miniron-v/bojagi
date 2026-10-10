@@ -57,9 +57,14 @@ export class View {
 
   // ---------- layout ----------
   resize() {
-    this.dpr = Math.min(3, window.devicePixelRatio || 1);
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
     const sr = this.stage.getBoundingClientRect();
     const ar = this.app.getBoundingClientRect();
+    // resetting a canvas size wipes it, so only do it when something really changed
+    const sig = `${dpr}|${Math.round(sr.width)}x${Math.round(sr.height)}|${Math.round(ar.width)}x${Math.round(ar.height)}|${Math.round(sr.top - ar.top)}`;
+    if (sig === this.layoutSig) return;
+    this.layoutSig = sig;
+    this.dpr = dpr;
     this.W = Math.max(1, sr.width);
     this.H = Math.max(1, sr.height);
     this.stageOff = { x: sr.left - ar.left, y: sr.top - ar.top };
@@ -87,6 +92,8 @@ export class View {
     this.trayScale = Math.min(0.62, (this.W / 3 - 20) / (5 * this.cell), trayH / (5.2 * this.cell));
     this.slots = [0, 1, 2].map((i) => ({ cx: (this.W / 6) * (1 + 2 * i), cy: trayTop + trayH / 2 }));
     this.hoopCache = null;
+    // paint right away so the resized canvas never shows a blank frame
+    if (this.stage.offsetParent !== null) this.renderStage(performance.now());
   }
 
   boardRectInApp() {
