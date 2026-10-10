@@ -115,11 +115,13 @@ export function seamIcon(id) {
     out += `<rect x="${x + 0.4}" y="${y + 0.4}" width="${u - 0.8}" height="${u - 0.8}" rx="1.2" fill="${fill}" opacity="${op}"/>`;
   }
   const glow = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1.5" fill="none" stroke="var(--gold)" stroke-width="1.1" opacity=".9"/>`;
-  const stitchH = (r) => `<line x1="${o - 1.5}" y1="${o + (r + 0.5) * u}" x2="${o + n * u + 1.5}" y2="${o + (r + 0.5) * u}" stroke="#f3ead6" stroke-width="1.1" stroke-dasharray="2 1.5" stroke-linecap="round" opacity=".95"/>`;
-  const stitchV = (c) => `<line x1="${o + (c + 0.5) * u}" y1="${o - 1.5}" x2="${o + (c + 0.5) * u}" y2="${o + n * u + 1.5}" stroke="#f3ead6" stroke-width="1.1" stroke-dasharray="2 1.5" stroke-linecap="round" opacity=".95"/>`;
+  const stitchH = (r) => `<line x1="${o - 1.5}" y1="${o + (r + 0.5) * u}" x2="${o + n * u + 1.5}" y2="${o + (r + 0.5) * u}" stroke="#f3ead6" stroke-width="1.4" stroke-dasharray="2.2 1.6" stroke-linecap="round" opacity=".95"/>`;
+  const stitchV = (c) => `<line x1="${o + (c + 0.5) * u}" y1="${o - 1.5}" x2="${o + (c + 0.5) * u}" y2="${o + n * u + 1.5}" stroke="#f3ead6" stroke-width="1.4" stroke-dasharray="2.2 1.6" stroke-linecap="round" opacity=".95"/>`;
   if (rows.length) {
     const r0 = Math.min(...rows);
     out += glow(o - 0.6, o + r0 * u - 0.6, n * u + 1.2, rows.length * u + 1.2);
+    // single-colour seams get a solid gold band so they read apart from mixed ones
+    if (spec.mono) out += `<rect x="${o - 1.6}" y="${o + r0 * u - 1.6}" width="${n * u + 3.2}" height="${rows.length * u + 3.2}" rx="2" fill="none" stroke="var(--gold)" stroke-width="2"/>`;
   }
   for (const c of cols) out += glow(o + c * u - 0.6, o - 0.6, u + 1.2, n * u + 1.2);
   for (const r of rows) out += stitchH(r);

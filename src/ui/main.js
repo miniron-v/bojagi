@@ -274,7 +274,7 @@ let modalClose = null;
  * .actions/.row-actions block is moved there so the main button never needs scrolling), and,
  * when `close` is given, a close button pinned to the top corner plus tap-outside to dismiss.
  */
-function openModal(html, { center = false, close = null } = {}) {
+function openModal(html, { center = false, close = null, closeButton = true } = {}) {
   closeTip();
   view.cancelDrag();
   el.modal.classList.toggle('center', center);
@@ -282,13 +282,21 @@ function openModal(html, { center = false, close = null } = {}) {
   const body = el.sheet.firstElementChild;
   const last = body.lastElementChild;
   if (last && (last.classList.contains('actions') || last.classList.contains('row-actions'))) {
+    // pin the primary choice; secondary buttons of a stacked list stay in the body
+    const btns = [...last.querySelectorAll(':scope > .btn')];
+    if (last.classList.contains('actions') && btns.length > 1) {
+      const rest = document.createElement('div');
+      rest.className = 'actions secondary';
+      btns.slice(1).forEach((b) => rest.appendChild(b));
+      body.appendChild(rest);
+    }
     const foot = document.createElement('div');
     foot.className = 'sheet-foot';
     foot.appendChild(last);
     el.sheet.appendChild(foot);
   }
   modalClose = close;
-  if (close) {
+  if (close && closeButton) {
     const x = document.createElement('button');
     x.className = 'sheet-close';
     x.setAttribute('aria-label', '닫기');
@@ -296,7 +304,7 @@ function openModal(html, { center = false, close = null } = {}) {
     x.addEventListener('click', () => { unlock(); sfx.ui(); close(); });
     el.sheet.appendChild(x);
   }
-  el.sheet.classList.toggle('closable', !!close);
+  el.sheet.classList.toggle('closable', !!close && closeButton);
   body.scrollTop = 0;
   el.modal.hidden = false;
   // swallow the tail of a double tap that opened this sheet
@@ -878,7 +886,7 @@ function patternCard(pt, i) {
   return `<div class="card pattern${pt.sold ? ' sold' : ''}">
     <div class="art">${seamIcon(pt.id)}</div>
     <div class="min"><div class="name">${seam.name} 본 <span class="up">Lv.${lv} → ${lv + 1}</span></div>
-      <div class="desc">칩 ${now.chips}→${nxt.chips}, 배수 ${now.mult}→${nxt.mult}. ${seam.how}</div></div>
+      <div class="desc">칩 ${now.chips}→${nxt.chips}, 배수 ${now.mult}→${nxt.mult}<span class="cond"> · ${seam.how}</span></div></div>
     <button class="btn btn-small ${can ? 'btn-gold' : 'btn-ghost'} price" data-pattern="${i}" ${can ? '' : 'disabled'}>${pt.sold ? '팔림' : `${PATTERN_PRICE}닢`}</button></div>`;
 }
 
@@ -903,7 +911,8 @@ function showShop() {
   const sh = run.shop;
   const full = run.tools.length >= MAX_TOOLS;
   const html = `<div class="shop-head"><div><div class="eyebrow left">${dayLabel()}</div><h2>장터</h2></div>
-      <span class="coin-pill">${glyph.coin}<span>${run.coins}</span></span></div>
+      <div class="shop-tools"><button class="btn btn-ghost btn-small" id="reroll" aria-label="도구와 본 새로 진열" ${run.coins < sh.rerollCost ? 'disabled' : ''}>${glyph.reroll}새로 진열 ${sh.rerollCost}닢</button>
+      <span class="coin-pill">${glyph.coin}<span>${run.coins}</span></span></div></div>
     <div class="cards">${sh.offers.map((of, i) => {
       const price = TOOLS[of.id].price;
       const can = !of.sold && !full && run.coins >= price;
@@ -912,7 +921,6 @@ function showShop() {
     }).join('')}</div>
     <div class="section-label"><span><b>바느질 본</b> 사면 그 족보가 한 단계 올라요</span><button class="link" id="open-seams">족보표</button></div>
     <div class="cards">${(sh.patterns || []).map((pt, i) => patternCard(pt, i)).join('')}</div>
-    <div class="row-actions"><button class="btn btn-ghost btn-small" id="reroll" ${run.coins < sh.rerollCost ? 'disabled' : ''}>${glyph.reroll}도구와 본 새로 진열 (${sh.rerollCost}닢)</button></div>
     <div class="section-label"><span>내 도구 ${run.tools.length}/${MAX_TOOLS}</span><span>눌러서 팔기</span></div>
     <div class="owned" id="owned"></div>
     <div class="actions"><div class="next-order"><small>다음 주문</small> ${nextOrderPreview()}</div><button class="btn btn-seal" id="leave" data-autofocus>주문 받으러 가기</button></div>`;
@@ -1027,7 +1035,9 @@ function showEnd(victory, ev) {
       ta.className = 'share-text';
       ta.value = text;
       ta.readOnly = true;
-      n.after(ta);
+      const body = s.querySelector('.sheet-body');
+      body.appendChild(ta);
+      ta.scrollIntoView({ block: 'nearest' });
       ta.select();
       toast('복사가 막혀 있어요. 글을 길게 눌러 복사하세요', 2600);
     };
@@ -1096,9 +1106,9 @@ function codexCard(id) {
   const def = TOOLS[id];
   const seen = meta.discovered.includes(id) && isUnlocked(id, meta);
   const p = !isUnlocked(id, meta) && progress(id, meta);
-  const desc = seen ? toolDesc(makeTool(id)) : p ? `${p.need} (${p.have}/${p.goal})` : '아직 못 만났어요';
+  const desc = seen ? toolDesc(makeTool(id)) : p ? `${p.need} (${p.have}/${p.goal})` : RARITY_NAME[def.rarity];
   return `<div class="codex-card r${def.rarity}${seen ? '' : ' locked'}"><span class="art">${toolArt(def)}</span>
-    <b>${seen ? def.name : p ? '잠김' : '???'}</b><span class="desc">${desc}</span></div>`;
+    <b>${seen ? def.name : p ? '잠김' : '?'}</b><span class="desc">${desc}</span></div>`;
 }
 
 function showCodex() {
@@ -1128,7 +1138,7 @@ function showRecords() {
 // ---------- title buttons ----------
 function confirmReplace(title, go) {
   const s = openModal(`<h2>${title}</h2><p class="lead">이어 짓던 판은 사라져요. 그 판의 기록은 일지에 남아요.</p>
-    <div class="row-actions"><button class="btn btn-ghost" id="no">취소</button><button class="btn btn-seal" id="yes" data-autofocus>시작</button></div>`, { center: true, close: closeModal });
+    <div class="row-actions"><button class="btn btn-ghost" id="no">취소</button><button class="btn btn-seal" id="yes" data-autofocus>시작</button></div>`, { center: true, close: closeModal, closeButton: false });
   on(s, '#no', closeModal);
   on(s, '#yes', once(() => {
     // the abandoned run still counts toward records and unlock progress
@@ -1165,10 +1175,16 @@ document.addEventListener('visibilitychange', () => {
   else resumeAudio();
 });
 window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !el.modal.hidden && modalClose) { modalClose(); return; }
   if (e.key === 'Escape' && run && run.phase === 'play' && el.modal.hidden) showPause();
 });
 
-if (document.fonts) document.fonts.ready.then(() => view.resize());
+if (document.fonts) {
+  document.fonts.ready.then(() => view.resize());
+  // canvas text never touches the DOM, so ask for the glyphs it draws up front
+  const glyphs = `${SEAMS.map((x) => x.name).join('')}주문완료연속목표조각개안에장날작은큰인의뢰놓을자리가없어요다떨어졌+0123456789,`;
+  for (const w of [500, 700, 800]) document.fonts.load(`${w} 30px Hahmlet`, glyphs).catch(() => {});
+}
 
 // Artifact viewer hot updates: carry the live run across a republish and drop the player back in.
 function boot(data) {
