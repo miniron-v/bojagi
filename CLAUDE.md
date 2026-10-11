@@ -8,6 +8,7 @@
 - claude.ai 아티팩트: `dist/artifact.html`을 같은 경로로 Artifact publish (URL 유지).
 - 단일 파일 빌드: `npm run build` → `dist/index.html`(배포), `dist/artifact.html`. dist도 커밋한다.
 - 커밋 트레일러는 세션이 알려 주는 Co-Authored-By / Claude-Session 줄을 붙인다.
+- CI가 실패했는데 로그를 못 받을 때(프록시가 로그 저장소를 막음): `docs/ci-debugging.md` — 주석 API, 보고서 브랜치, 느린 CI 흉내.
 - 리뷰 서브에이전트가 `git checkout`으로 HEAD를 떼어 놓는 일이 있었다 → **push 전 `git status`로 main인지 확인.**
 
 ## 한 라운드의 흐름 (사용자 피드백 → 배포)
