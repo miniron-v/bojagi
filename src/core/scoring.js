@@ -1,7 +1,7 @@
 // Chips × Mult evaluation for one placement. Returns a step-by-step breakdown so the UI
 // can replay it (Balatro-style tally) and the final integer score.
 import { TOOLS } from './tools.js';
-import { judgeSeam, seamValue, monoFactor } from './seams.js';
+import { judgeSeam, seamValue, monoFactor, finishOf } from './seams.js';
 
 export const CELL_CHIPS = 5;
 
@@ -18,7 +18,7 @@ export function evaluate(ctx, tools) {
   if (!ctx.lineCount) {
     // Plain placement: small trickle so every move feels like progress.
     steps.push({ src: 'place', chips: ctx.placedCells });
-    return { chips: ctx.placedCells, mult: 1, score: ctx.placedCells, seam: null, steps };
+    return { chips: ctx.placedCells, mult: 1, score: ctx.placedCells, seam: null, finish: null, steps };
   }
 
   const seam = ctx.seam || judgeSeam(ctx);
@@ -52,9 +52,10 @@ export function evaluate(ctx, tools) {
   for (const e of effects) if (e.xmult) { mult *= e.xmult; steps.push(e); }
 
   const mx = monoFactor(ctx);
+  const finish = finishOf(ctx);
   if (mx > 1) {
     mult *= mx;
-    steps.push({ src: 'mono', xmult: mx, monoLines: ctx.monoLines, lineCount: ctx.lineCount });
+    steps.push({ src: 'mono', xmult: mx, monoLines: ctx.monoLines, lineCount: ctx.lineCount, finish });
   }
 
   if (ctx.boss === 'strict') {
@@ -64,5 +65,5 @@ export function evaluate(ctx, tools) {
 
   mult = Math.max(1, Math.round(mult * 10) / 10);
   const score = Math.floor(chips * mult);
-  return { chips, mult, score, seam, level, steps };
+  return { chips, mult, score, seam, level, finish, steps };
 }

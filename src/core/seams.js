@@ -51,6 +51,34 @@ export function monoFactor(ctx) {
   return ctx.lineCount ? 1 + (ctx.monoLines || 0) / ctx.lineCount : 1;
 }
 
+/**
+ * The finish a clear's colours give it, named on top of its seam (never instead of it):
+ * every line one colour → 오목누비 (the ridged, finest nubi, ×2); some lines one colour → 납작누비
+ * (the flat kind, ×1 to ×2); none → plain (null).
+ */
+export const FINISH_BY_ID = { ridge: { name: '오목누비' }, flat: { name: '납작누비' } };
+
+export function finishOf(ctx) {
+  const m = ctx.monoLines || 0;
+  if (!ctx.lineCount || !m) return null;
+  return m >= ctx.lineCount ? 'ridge' : 'flat';
+}
+
+/**
+ * A keepsake patch as it is drawn today. Saves from before colour became a finish still hold the
+ * old colour seams ('mono', 'twinMono'): they become the plain stitch that seam needed (one line,
+ * two lines) finished as today's rules would name it — every line one colour, so 오목누비. Unknown ids lose their stitch rather than crash.
+ */
+export function upgradePatch(h) {
+  if (!h) return h;
+  let { seam = null, finish = null } = h;
+  if (seam === 'mono') { seam = 'single'; finish ||= 'ridge'; } // one one-colour line: 오목누비 today
+  if (seam === 'twinMono') { seam = 'double'; finish ||= 'ridge'; }
+  if (seam && !SEAM_BY_ID[seam]) seam = null;
+  if (finish && !FINISH_BY_ID[finish]) finish = null;
+  return { ...h, seam, finish };
+}
+
 /** The seam a clear is scored as: the highest-ranked one it satisfies. Levels never change it. */
 export function judgeSeam(ctx) {
   return matchingSeams(ctx)[0] || null;

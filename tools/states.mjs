@@ -129,7 +129,8 @@ await page.waitForTimeout(300);
 await shot('skins-worn');
 await page.click('.sheet-close');
 // reward sheet with the quilt patch stitched in
-await inject(`R.beginOrder(run); run.order.seams = { double: 3, single: 1 }; run.order.colors = { red: 20, blue: 4 };
+await inject(`R.beginOrder(run); run.order.seams = { double: 3, single: 1 }; run.order.finishes = { double: { ridge: 2 } }; run.order.colors = { red: 20, blue: 4 };
+  run.history = [{ kind: 0, ok: true, color: 'blue', seam: 'single', finish: 'flat', score: 1 }, { kind: 1, ok: true, color: 'yellow', seam: 'cross', finish: 'ridge', score: 1 }];
   run.order.score = run.order.target - 1;`);
 const mv = await page.evaluate(() => {
   const { run, R } = window.__bojagi;
@@ -148,6 +149,25 @@ if (mv) {
   await page.click('#btn-continue');
   await page.waitForTimeout(1200);
   await shot('reward-quilt');
+}
+// aiming forecast with a colour finish: two rows, both red (오목누비) or one red one mixed (납작누비)
+for (const [name, second] of [['aim-ridge', 'red'], ['aim-flat', 'blue']]) {
+  await inject(`R.beginOrder(run);
+    run.board = run.board.map(() => null);
+    for (let c = 0; c < 8; c++) { if (c !== 3) { run.board[3 * 8 + c] = 'red'; run.board[4 * 8 + c] = c === 0 ? '${second}' : 'red'; } }
+    run.board[0] = 'white';
+    run.tray = [{ shape: 'i2_1', color: 'red' }, null, null];`);
+  await page.evaluate(() => {
+    const v = window.__bojagi.view;
+    const { run } = window.__bojagi;
+    const shape = { cells: [[0, 0], [1, 0]] };
+    // put the drag state in place so the hoop draws the preview too
+    v.drag = { i: 0, valid: true, anchor: { r: 3, c: 3 }, shape, piece: run.tray[0], lines: window.__bojagi.R.preview(run, 0, 3, 3).lines, x: -999, y: -999 };
+    v.handlers.hover({ i: 0, r: 3, c: 3 });
+  });
+  await page.waitForTimeout(300);
+  await shot(name);
+  await page.evaluate(() => { window.__bojagi.view.drag = null; window.__bojagi.view.handlers.hover(null); });
 }
 console.log(JSON.stringify({ errors }));
 await browser.close();

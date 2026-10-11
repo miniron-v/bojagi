@@ -1,11 +1,12 @@
 // 조각누비: the run's keepsake. Every finished order adds one patch: its cloth is the colour the
 // player sewed most in that order, and it is quilted with the stitch of the seam they made most
-// (홈질 one running line, 겹누비 two, 세누비 dense lines, 십자수 a cross, 마무리 a border). A failed order leaves a torn patch, a boss order a
-// red knot in the corner. Rows are market days, so the quilt also reads as the map of the run.
+// (홈질 one running line, 겹누비 two, 세누비 dense lines, 십자수 a cross, 마무리 a border). If that seam was
+// mostly sewn in one colour the stitch is gold thread: flat for 납작누비, raised in ridges for 오목누비.
+// A failed order leaves a torn patch, a boss order a red knot in the corner. Rows are market days, so the quilt also reads as the map of the run.
 // It is stitched in on the reward sheet, laid out whole at the end, and kept in the 일지.
 import { paintPatch } from './art.js';
 import { DAYS, ORDERS_PER_DAY } from '../core/run.js';
-import { SEAM_BY_ID } from '../core/seams.js';
+import { SEAM_BY_ID, FINISH_BY_ID, upgradePatch } from '../core/seams.js';
 
 const EMOJI = { blue: '🟦', red: '🟥', yellow: '🟨', white: '⬜', black: '⬛' };
 const COLOR_NAME = { blue: '청색', red: '적색', yellow: '황색', white: '백색', black: '흑색' };
@@ -23,23 +24,41 @@ export function quiltCells(history) {
   return { cols: ORDERS_PER_DAY, rows: days, cells };
 }
 
-/** One line describing a patch, e.g. "청색 천 · 겹누비 땀". */
+/** One line describing a patch, e.g. "청색 천 · 겹누비 땀" or "청색 천 · 겹누비 땀 · 오목누비". */
 export function patchCaption(h) {
   if (!h) return '';
   const seam = h.seam ? `${SEAM_BY_ID[h.seam].name} 땀` : '땀 없이';
-  return `${COLOR_NAME[h.color] || '백색'} 천 · ${seam}`;
+  const finish = h.seam && h.finish ? ` · ${FINISH_BY_ID[h.finish].name}` : '';
+  return `${COLOR_NAME[h.color] || '백색'} 천 · ${seam}${finish}`;
 }
 
-/** The quilting stitch for a seam, drawn over a patch of size w×h. */
-function quiltStitch(g, seam, w, h, color) {
+/**
+ * The quilting stitch for a seam, drawn over a patch of size w×h. A finish sews it in gold thread:
+ * 'flat' (납작누비) lies flat on the cloth; 'ridge' (오목누비) stands up as a raised cord, a shadow
+ * under the thread and a glint along its top. On light cloths gold gets a dark rim to stay gold.
+ */
+function quiltStitch(g, seam, w, h, color, finish = null, light = false) {
   if (!seam) return;
   g.save();
-  g.strokeStyle = color;
   g.lineCap = 'round';
+  const dense = seam === 'triple';
   const lw = Math.max(1, w * 0.045);
-  g.lineWidth = lw;
-  g.setLineDash([Math.max(2, w * 0.09), Math.max(1.5, w * 0.06)]);
-  const line = (x0, y0, x1, y1) => { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); };
+  const dash = [Math.max(2, w * 0.09), Math.max(1.5, w * 0.06)];
+  const tw = finish ? lw * (dense ? 1.1 : 1.35) : lw; // gold thread is a little thicker
+  const lift = Math.max(0.8, w * (dense ? 0.018 : 0.03));
+  const stroke = (x0, y0, x1, y1, style, width, dx = 0, dy = 0) => {
+    g.strokeStyle = style;
+    g.lineWidth = width;
+    g.beginPath(); g.moveTo(x0 + dx, y0 + dy); g.lineTo(x1 + dx, y1 + dy); g.stroke();
+  };
+  const line = (x0, y0, x1, y1) => {
+    if (!finish) { stroke(x0, y0, x1, y1, color, lw); return; }
+    if (finish === 'ridge') stroke(x0, y0, x1, y1, 'rgba(0,0,0,.42)', tw * 1.25, lift * 0.6, lift * 1.4);
+    if (light) stroke(x0, y0, x1, y1, 'rgba(70,45,10,.85)', tw + Math.max(1, lw * 0.7));
+    stroke(x0, y0, x1, y1, '#e8bf55', tw);
+    if (finish === 'ridge') stroke(x0, y0, x1, y1, 'rgba(255,250,228,.8)', Math.max(0.6, tw * 0.32), -tw * 0.18, -tw * 0.22);
+  };
+  g.setLineDash(dash);
   const m = w * 0.2;
   switch (seam) {
     case 'single': line(m, h / 2, w - m, h / 2); break;
@@ -50,8 +69,10 @@ function quiltStitch(g, seam, w, h, color) {
       break;
     case 'cross': line(m, h / 2, w - m, h / 2); line(w / 2, m, w / 2, h - m); break;
     case 'perfect':
-      g.strokeRect(m, m, w - m * 2, h - m * 2);
-      g.strokeRect(m * 1.8, m * 1.8, w - m * 3.6, h - m * 3.6);
+      for (const k of [m, m * 1.8]) {
+        line(k, k, w - k, k); line(w - k, k, w - k, h - k);
+        line(w - k, h - k, k, h - k); line(k, h - k, k, k);
+      }
       break;
     default: break;
   }
@@ -60,9 +81,11 @@ function quiltStitch(g, seam, w, h, color) {
 
 /** Paints one keepsake patch (cloth, quilting, torn mark or knot) at the origin. */
 export function paintKeepsake(g, hist, w, h) {
+  hist = upgradePatch(hist);
   paintPatch(g, hist.color || 'white', w, h);
-  const thread = hist.color === 'white' || hist.color === 'yellow' ? 'rgba(60,40,20,.55)' : 'rgba(243,234,214,.8)';
-  quiltStitch(g, hist.seam, w, h, thread);
+  const light = hist.color === 'white' || hist.color === 'yellow';
+  const thread = light ? 'rgba(60,40,20,.55)' : 'rgba(243,234,214,.8)';
+  quiltStitch(g, hist.seam, w, h, thread, hist.finish, light);
   if (hist.boss) {
     g.fillStyle = '#c63d31';
     g.beginPath(); g.arc(w * 0.82, h * 0.18, Math.max(2, w * 0.08), 0, Math.PI * 2); g.fill();
@@ -158,6 +181,6 @@ export function keepsakeOf(run, victory) {
     day: run.day,
     points: Math.floor(run.stats.points || 0),
     daily: run.mode === 'daily',
-    h: (run.history || []).slice(-24).map((x) => ({ color: x.color, seam: x.seam || null, ok: x.ok, boss: !!x.boss })),
+    h: (run.history || []).slice(-24).map((x) => ({ color: x.color, seam: x.seam || null, finish: x.finish || null, ok: x.ok, boss: !!x.boss })),
   };
 }

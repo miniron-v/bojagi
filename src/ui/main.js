@@ -15,7 +15,7 @@ import * as store from './store.js';
 import { lockedIds, isUnlocked, progress } from '../core/unlocks.js';
 import { recordRun as writeRecords, dailyStreakAlive } from '../core/records.js';
 import { fmt, fmtBig, fmtMult, kindName, dayName, bestDayLabel } from './format.js';
-import { SEAMS, SEAM_BY_ID, seamValue, PATTERN_PRICE } from '../core/seams.js';
+import { SEAMS, SEAM_BY_ID, FINISH_BY_ID, seamValue, PATTERN_PRICE } from '../core/seams.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const app = $('#app');
@@ -311,6 +311,8 @@ const SEAM_ID_BY_NAME = Object.fromEntries(SEAMS.map((x) => [x.name, x.id]));
 function richText(text) {
   return text.replace(SEAM_NAME_RE, (m) => `<span class="seam-ref">${m}${shapeTag(SEAM_ID_BY_NAME[m])}</span>`);
 }
+/** The colour finish named on top of a seam: 오목누비 (all lines one colour) or 납작누비 (some). */
+const finishTag = (st) => (st && st.finish ? `<em class="fintag fintag-${st.finish}">${FINISH_BY_ID[st.finish].name} ×${fmtMult(st.xmult)}</em>` : '');
 const lvTag = (id) => (SEAM_BY_ID[id].fixed ? '' : `Lv.${seamLevel(id)}`);
 const seamLabel = (id) => `${SEAM_BY_ID[id].name} ${lvTag(id)}`.trim();
 
@@ -650,7 +652,8 @@ function showPreview(h) {
     setStreak(pv.streak, 'up');
     el.order.classList.add('previewing');
     const mono = pv.steps.find((st) => st.src === 'mono');
-    el.peek.innerHTML = `<span class="pk-seam">${SEAM_BY_ID[pv.seam].name}${shapeTag(pv.seam)}</span>${mono ? `<em class="pk-mono">한 색 ×${fmtMult(mono.xmult)}</em>` : ''}
+    // the seam (shape) and, under it, the finish its colours give it: 겹누비 + 오목누비 ×2
+    el.peek.innerHTML = `<span class="pk-seam"><span class="pk-name">${SEAM_BY_ID[pv.seam].name}${shapeTag(pv.seam)}</span>${finishTag(mono)}</span>
       <span class="pk-calc"><span class="c">${fmt(pv.chips)}</span><i>×</i><span class="m">${fmtMult(pv.mult)}</span></span>
       <span class="pk-gain">${pv.completes ? '주문 완료' : `+${fmt(pv.score)}`}</span>`;
     const key = `${h.i}:${h.r}:${h.c}`;
@@ -829,11 +832,19 @@ function startTally(ev) {
         view.text(`연속 ${st.streak}`, boardMid.x, topY, { size: 20, color: '#e2b54a', dur: 900, rise: 20, compact: true });
         if (st.streak === 2) teachOnce('streak', '연달아 지우면 배수가 올라가요. 조각 3개 안에 다시 지우면 이어져요', 4000);
       } else if (st.src === 'mono') {
+        // the colour finish is named on top of the seam: the head becomes 겹누비 + 오목누비
         mult *= st.xmult;
-        const full = st.monoLines === st.lineCount;
-        label = full ? `오목누비 · 모두 한 색 ×${fmtMult(st.xmult)}` : `한 색 ${st.monoLines}/${st.lineCount}줄 ×${fmtMult(st.xmult)}`;
-        beat = 380;
-        if (full) view.text('오목누비', boardMid.x, topY, { size: 22, color: '#e2b54a', dur: 1000, rise: 18, compact: true });
+        const ridge = st.finish === 'ridge';
+        const fname = FINISH_BY_ID[st.finish].name;
+        label = ridge ? `${fname} · 모두 한 색 ×${fmtMult(st.xmult)}` : `${fname} · 한 색 ${st.monoLines}/${st.lineCount}줄 ×${fmtMult(st.xmult)}`;
+        beat = ridge ? 520 : 420;
+        const head = $('.seam', tally);
+        if (head && !$('.fintag', head)) head.insertAdjacentHTML('beforeend', finishTag(st));
+        view.label([{ str: fname, size: ridge ? 26 : 20, color: '#e8bf55' }], boardMid.x, topY,
+          { dur: ridge ? 1200 : 950, rise: 18, pop: ridge ? 1.25 : 1.1, edge: 'rgba(232,191,85,.95)', compact: !ridge });
+        view.goldSparks(lines, ridge ? 4 : 3);
+        sfx.finish(ridge);
+        if (ridge) { view.shake(1.2); haptic([10, 30, 14]); }
       } else if (st.src === 'boss') {
         mult *= st.xmult;
         label = `${R.BOSSES.strict.name} ×${st.xmult}`;
@@ -851,7 +862,7 @@ function startTally(ev) {
       lEl.textContent = label;
       if (st.chips) bump(cEl.parentNode);
       if (st.mult || st.xmult) bump(mEl.parentNode);
-      if (st.xmult) sfx.mult(tick); else if (st.src !== 'seam') sfx.tick(tick);
+      if (st.src === 'mono') { /* its own strum above */ } else if (st.xmult) sfx.mult(tick); else if (st.src !== 'seam') sfx.tick(tick);
       tick++;
       await sleep(beat * sp);
     }
@@ -1008,7 +1019,7 @@ function showSeams(back) {
     }).join('')}
       <div class="seam-row bonus"><span class="ic">${seamIcon('mono')}</span><span class="nm">한 색 줄 <small>모든 족보에</small></span>
         <span class="val"><span class="m">×1~2</span></span>
-        <span class="cond">지운 줄 중 한 색으로 채운 줄의 비율만큼 배수가 커져요. 모두 한 색이면 ×2 (오목누비)</span></div></div>`;
+        <span class="cond">족보 위에 붙는 이름이에요. 모두 한 색이면 오목누비 ×2, 일부만 한 색이면 납작누비(한 색 줄 비율만큼)</span></div></div>`;
   openModal(html, { close: () => (back ? back() : resumePhase()) });
 }
 
@@ -1363,7 +1374,7 @@ function showHow(back) {
       <p><b>조각 놓기</b> — 아래 조각을 끌어 수틀에 놓아요. 놓을 때마다 남은 조각이 하나씩 줄어요.</p>
       <p><b>줄 누비기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 누벼지고 점수가 나요.</p>
       <p><b>바느질 족보</b> — 지운 모양에 따라 기법이 정해져요. 홈질(한 줄), 겹누비(같은 방향 두 줄), 십자수(가로+세로), 세누비(세 줄 이상), 마무리(판을 다 비움). 기법마다 점과 배수가 정해져 있어요.</p>
-      <p><b>한 색 줄</b> — 한 줄을 한 가지 색으로 채워 지우면 배수가 커져요. 지운 줄이 모두 한 색이면 ×2(오목누비), 두 줄 중 하나면 ×1.5.</p>
+      <p><b>한 색 줄</b> — 한 줄을 한 가지 색으로 채워 지우면 족보에 이름이 하나 더 붙고 배수가 커져요. 지운 줄이 모두 한 색이면 오목누비 ×2, 두 줄 중 하나처럼 일부만 한 색이면 납작누비 ×1.5.</p>
       <p><b>점 × 배수</b> — 족보의 점에 지운 칸마다 5를 더하고, 연달아 지우면 배수가 올라요. 도구가 점과 배수를 더 키워요.</p>
       <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 놓을 데가 없으면 「조각 바꾸기」로 트레이를 새로 받아요.</p>
       <p><b>장터</b> — 품삯으로 바느질 도구와 바느질 본을 사요. 본은 족보 레벨을 올려 줘요. 한 족보를 키워 빌드를 만들어 보세요. 돈을 모아 두면 ${R.INTEREST_PER}냥마다 이자가 1냥(최대 ${R.INTEREST_CAP}냥) 붙어요.</p>

@@ -5,7 +5,7 @@ import { SHAPES, SHAPE_BY_ID, COLORS } from './shapes.js';
 import { N, emptyBoard, canPlace, fitsAnywhere, paint, fullLines, clearLines, filledCount } from './board.js';
 import { TOOLS, TOOL_IDS, MAX_TOOLS, makeTool, sellPrice } from './tools.js';
 import { evaluate } from './scoring.js';
-import { SEAM_IDS, PATTERN_SEAMS, PATTERN_PRICE, startingLevels, judgeSeam } from './seams.js';
+import { SEAM_IDS, PATTERN_SEAMS, PATTERN_PRICE, startingLevels, judgeSeam, finishOf, upgradePatch } from './seams.js';
 
 export const SAVE_VERSION = 1;
 export const DAYS = 4;
@@ -168,6 +168,7 @@ export function prepareOrder(run) {
     stuck: false,
     colors: {},
     seams: {}, // clears per seam this order: the keepsake patch takes the commonest one's stitch
+    finishes: {}, // per seam, clears sewn 납작누비/오목누비: { double: { flat: 1, ridge: 2 } }
   };
   run.board = emptyBoard();
   if (boss === 'knots') {
@@ -243,9 +244,25 @@ function dominantSeam(o) {
   return best;
 }
 
+/**
+ * How the commonest seam was finished most often: 'ridge' (오목누비), 'flat' (납작누비) or null
+ * (plain). Ties go to the finer finish, as seam ties go to the higher seam.
+ */
+export function dominantFinish(o, seam) {
+  if (!seam) return null;
+  const f = o.finishes?.[seam] || {};
+  const ridge = f.ridge || 0;
+  const flat = f.flat || 0;
+  const plain = Math.max(0, (o.seams?.[seam] || 0) - ridge - flat);
+  if (ridge && ridge >= flat && ridge >= plain) return 'ridge';
+  if (flat && flat >= plain) return 'flat';
+  return null;
+}
+
 function logOrder(run, ok) {
+  const seam = dominantSeam(run.order);
   (run.history ||= []).push({
-    kind: run.order.kind, ok, color: dominantColor(run.order), seam: dominantSeam(run.order),
+    kind: run.order.kind, ok, color: dominantColor(run.order), seam, finish: dominantFinish(run.order, seam),
     score: run.order.score, target: run.order.target, boss: run.order.boss || null,
   });
 }
@@ -343,6 +360,11 @@ export function place(run, i, r, c) {
     sc[ctx.seam] = (sc[ctx.seam] || 0) + 1;
     o.seams ||= {};
     o.seams[ctx.seam] = (o.seams[ctx.seam] || 0) + 1;
+    const fin = finishOf(ctx);
+    if (fin) {
+      const f = ((o.finishes ||= {})[ctx.seam] ||= {});
+      f[fin] = (f[fin] || 0) + 1;
+    }
     run.tools.forEach((t, slot) => {
       const def = TOOLS[t.id];
       if (def.after && def.after(ctx, t)) lateGrow.push({ type: 'toolGrow', slot, late: true });
@@ -526,7 +548,7 @@ export function continueEndless(run) {
 /** Fills fields added after a save was written so older saves keep working. */
 export function migrate(s) {
   s.history ||= [];
-  if (s.order) { s.order.colors ||= {}; s.order.seams ||= {}; }
+  if (s.order) { s.order.colors ||= {}; s.order.seams ||= {}; s.order.finishes ||= {}; }
   const hadPoints = s.stats && typeof s.stats.points === 'number';
   s.stats = { ...emptyStats(), ...(s.stats || {}) };
   // saves from before run points: rebuild them from the orders sewn so far
@@ -535,7 +557,7 @@ export function migrate(s) {
   s.seams = { ...startingLevels(), ...(s.seams || {}) };
   // 납작누비/오목누비 stopped being seams (colour became a bonus): drop their levels and stale offers
   for (const id of Object.keys(s.seams)) if (!SEAM_IDS.includes(id)) delete s.seams[id];
-  for (const h of s.history) if (h.seam && !SEAM_IDS.includes(h.seam)) h.seam = null;
+  s.history = s.history.map(upgradePatch);
   s.stats.topLevel = Math.max(s.stats.topLevel || 1, ...Object.values(s.seams));
   if (s.shop && !s.shop.patterns) s.shop.patterns = [];
   if (s.shop) s.shop.patterns = s.shop.patterns.filter((p) => PATTERN_SEAMS.includes(p.id));

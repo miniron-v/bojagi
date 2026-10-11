@@ -259,6 +259,18 @@ export class View {
     this.setBoard(board);
   }
 
+  /** Gold thread sparks along each one-colour line (the 납작누비/오목누비 beat of the tally). */
+  goldSparks(lines, n = 3) {
+    for (const l of lines) {
+      if (!l.mono) continue;
+      for (let k = 0; k < 8; k += 7 / Math.max(1, n - 1)) {
+        const i = Math.round(k);
+        const p = l.type === 'row' ? this.cellCenterApp(l.index, i) : this.cellCenterApp(i, l.index);
+        this.burst(p.x, p.y, '#e8bf55', 3, 2.2);
+      }
+    }
+  }
+
   shake(power) {
     if (this.reduced) return;
     this.shakeT = performance.now();
@@ -425,6 +437,34 @@ export class View {
       }
     }
 
+    // one-colour lines in the preview carry a gold running stitch, so 납작누비 (some lines) and
+    // 오목누비 (every line, thicker thread with a shadow) read on the board before the drop
+    if (d && d.valid && d.lines.some((l) => l.mono)) {
+      const ridge = d.lines.every((l) => l.mono);
+      const flow = (now / 40) % (cell * 0.36);
+      g.save();
+      g.lineCap = 'round';
+      g.setLineDash([cell * 0.22, cell * 0.14]);
+      g.lineDashOffset = -flow;
+      for (const l of d.lines) {
+        if (!l.mono) continue;
+        const vert = l.type === 'col';
+        const x0 = vert ? bx + (l.index + 0.5) * cell : bx + cell * 0.15;
+        const y0 = vert ? by + cell * 0.15 : by + (l.index + 0.5) * cell;
+        const x1 = vert ? x0 : bx + cell * 7.85;
+        const y1 = vert ? by + cell * 7.85 : y0;
+        if (ridge) {
+          g.strokeStyle = 'rgba(0,0,0,.35)';
+          g.lineWidth = Math.max(3, cell * 0.13);
+          g.beginPath(); g.moveTo(x0 + 1, y0 + 2); g.lineTo(x1 + 1, y1 + 2); g.stroke();
+        }
+        g.strokeStyle = '#e8bf55';
+        g.lineWidth = Math.max(2, cell * (ridge ? 0.1 : 0.07));
+        g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      }
+      g.restore();
+    }
+
     // line flash after a clear
     this.lineGlow = this.lineGlow.filter((lg) => {
       const t = (now - lg.t0) / (420 * this.speed);
@@ -479,7 +519,8 @@ export class View {
       g.setLineDash([cell * 0.22, cell * 0.14]);
       g.lineWidth = Math.max(2, cell * 0.08);
       g.lineCap = 'round';
-      g.strokeStyle = '#c8392c';
+      // a one-colour line is sewn with gold thread, the rest with red
+      g.strokeStyle = l.mono ? '#e8bf55' : '#c8392c';
       g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
       g.setLineDash([]);
       if (t <= 1) {

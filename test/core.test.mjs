@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { SHAPES, SHAPE_BY_ID } from '../src/core/shapes.js';
 import { emptyBoard, canPlace, paint, fullLines, clearLines, idx } from '../src/core/board.js';
 import { evaluate } from '../src/core/scoring.js';
+import { finishOf, upgradePatch } from '../src/core/seams.js';
 import { makeTool, TOOL_IDS, TOOLS } from '../src/core/tools.js';
 import * as R from '../src/core/run.js';
 
@@ -573,7 +574,7 @@ test('a tool unlocked during a run only reaches the market from the next run', (
   assert.ok(seen.size > 10, 'rerolls do show the open pool');
 });
 
-test('migrate: saves from before colour became a bonus drop the old seam ids everywhere', () => {
+test('migrate: saves from before colour became a finish drop the old seam ids everywhere', () => {
   const run = R.newRun({ seed: 9 });
   run.phase = 'reward'; run.reward = { lines: [], total: 0 };
   run.seams.mono = 4; run.seams.twinMono = 2;
@@ -581,7 +582,54 @@ test('migrate: saves from before colour became a bonus drop the old seam ids eve
   run.shop = { offers: [], patterns: [{ id: 'mono', sold: false }, { id: 'cross', sold: false }], rerollCost: 2 };
   const m = R.migrate(JSON.parse(JSON.stringify(run)));
   assert.deepEqual(Object.keys(m.seams).sort(), ['cross', 'double', 'perfect', 'single', 'triple']);
-  assert.equal(m.history[0].seam, null);
+  // an old 오목누비 patch keeps its name as a finish on the two-line stitch
+  assert.equal(m.history[0].seam, 'double');
+  assert.equal(m.history[0].finish, 'ridge');
   assert.equal(m.history[1].seam, 'double');
+  assert.equal(m.history[1].finish, null);
   assert.deepEqual(m.shop.patterns.map((p) => p.id), ['cross']);
+});
+
+test('finish: all lines one colour is 오목누비, some is 납작누비, none is plain', () => {
+  assert.equal(finishOf({ lineCount: 2, monoLines: 2 }), 'ridge');
+  assert.equal(finishOf({ lineCount: 2, monoLines: 1 }), 'flat');
+  assert.equal(finishOf({ lineCount: 1, monoLines: 1 }), 'ridge', '한 줄도 그 줄이 한 색이면 오목누비');
+  assert.equal(finishOf({ lineCount: 3, monoLines: 0 }), null);
+  assert.equal(finishOf({ lineCount: 0, monoLines: 0 }), null);
+  const r = evaluate(baseCtx({ lineCount: 2, rowLines: 2, monoLines: 1,
+    cleared: Array.from({ length: 16 }, (_, k) => ({ r: k >> 3, c: k & 7, color: 'red' })) }), []);
+  assert.equal(r.finish, 'flat');
+  assert.equal(r.steps.find((s) => s.src === 'mono').finish, 'flat');
+});
+
+test('finish: the keepsake takes the commonest finish of the commonest seam (ties go finer)', () => {
+  const o = (seams, finishes) => ({ seams, finishes });
+  assert.equal(R.dominantFinish(o({ double: 3 }, { double: { ridge: 2 } }), 'double'), 'ridge');
+  assert.equal(R.dominantFinish(o({ double: 3 }, { double: { ridge: 1 } }), 'double'), null, '보통 2 > 오목 1');
+  assert.equal(R.dominantFinish(o({ double: 2 }, { double: { ridge: 1 } }), 'double'), 'ridge', '동률은 오목');
+  assert.equal(R.dominantFinish(o({ double: 3 }, { double: { flat: 2, ridge: 1 } }), 'double'), 'flat');
+  assert.equal(R.dominantFinish(o({ cross: 2 }, { double: { ridge: 5 } }), 'cross'), null, '다른 족보의 마감은 세지 않음');
+  assert.equal(R.dominantFinish(o({}, {}), null), null);
+});
+
+test('finish: placing a one-colour line records 오목누비 on the order and in the history', () => {
+  const run = R.newRun({ seed: 3 });
+  R.beginOrder(run);
+  run.board = emptyBoard();
+  for (let c = 0; c < 6; c++) run.board[idx(0, c)] = 'red';
+  run.board[idx(5, 5)] = 'blue'; // something left so the clear is 홈질, not 마무리
+  run.tray = [{ shape: 'i2_0', color: 'red' }, null, null];
+  assert.equal(R.preview(run, 0, 0, 6).finish, 'ridge', '예고에도 마감이 실림');
+  run.order.target = 1; // this clear finishes the order, so it is logged
+  R.place(run, 0, 0, 6);
+  assert.deepEqual(run.order.finishes, { single: { ridge: 1 } });
+  const h = run.history.at(-1);
+  assert.equal(h.seam, 'single');
+  assert.equal(h.finish, 'ridge');
+});
+
+test('finish: old journal patches with colour seams draw as a finish', () => {
+  assert.deepEqual(upgradePatch({ color: 'red', seam: 'mono' }), { color: 'red', seam: 'single', finish: 'ridge' });
+  assert.deepEqual(upgradePatch({ color: 'red', seam: 'gone' }), { color: 'red', seam: null, finish: null });
+  assert.deepEqual(upgradePatch({ color: 'red', seam: 'cross', finish: 'ridge' }), { color: 'red', seam: 'cross', finish: 'ridge' });
 });
