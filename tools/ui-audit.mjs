@@ -37,8 +37,8 @@ const BIG_META = {
 // Run mutations applied in the page (R = core run module). Each scenario opens one screen.
 const FULL_TOOLS = "run.tools = ['thimble','iron','silk','scissors','lantern'].map(id => ({ id, data: id==='iron'?{mult:777}:id==='silk'?{chips:9999}:{} }));";
 const BIG_RUN = `${FULL_TOOLS} run.coins = 9999; run.day = 4; run.stats.points = 98765432; run.stats.bestHand = 9876543; run.stats.orders = 11; run.stats.bestStreak = 42;
-  run.history = Array.from({ length: 11 }, (_, i) => ({ kind: i % 3, ok: true, color: ['blue','red','yellow','white','black'][i % 5], seam: ['single','double','cross','triple','perfect'][i % 5], score: 123456, target: 120000, boss: i % 3 === 2 ? 'knots' : null }));
-  run.seams = { perfect: 12, triple: 14, cross: 11, double: 13, single: 1 };`;
+  run.history = Array.from({ length: 11 }, (_, i) => ({ kind: i % 3, ok: true, color: ['blue','red','yellow','white','black'][i % 5], seam: ['single','double','gap','triple','cross','perfect','whole','edge','center'][i % 9], score: 123456, target: 120000, boss: i % 3 === 2 ? 'knots' : null }));
+  run.seams = { triple: 14, gap: 12, double: 13, single: 1, perfect: 12, cross: 11, whole: 15, edge: 16, center: 13 };`;
 const SCENARIOS = {
   title: { open: "ui.titleScreen()" },
   codex: { open: "ui.showCodex()" },

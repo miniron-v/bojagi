@@ -226,7 +226,7 @@ b, .num { font-variant-numeric: tabular-nums; }
   box-shadow: 0 10px 24px #000b;
 }
 .tally.show { opacity: 1; }
-.tally .seam { font-family: var(--font-display); font-weight: 700; font-size: 17px; line-height: 1.1; }
+.tally .seam { font-family: var(--font-display); font-weight: 700; font-size: 17px; line-height: 1.1; white-space: nowrap; max-width: 100%; }
 .tally .seam small { font-weight: 400; font-size: 12px; color: var(--gold-text); margin-left: 6px; }
 .tally .row { display: flex; align-items: center; gap: 8px; }
 .tally .chips, .tally .mult { display: flex; flex-direction: column; align-items: center; min-width: 84px; padding: 3px 10px 5px; border-radius: 3px; line-height: 1.05; }
@@ -571,7 +571,8 @@ b, .num { font-variant-numeric: tabular-nums; }
 /* seam shape tag: the plain-words shape that goes with every seam name */
 .shape { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 3px; background: #ffffff14; color: var(--muted);
   font-family: var(--font-body); font-weight: 500; font-size: .78em; line-height: 1.5; vertical-align: .08em; white-space: nowrap; }
-.seam-ref { white-space: nowrap; }
+.seam-ref { white-space: normal; }
+.seam-ref .shape { white-space: nowrap; }
 .tally .seam .shape { font-size: 12px; }
 .pk-seam .shape { font-size: 11px; }
 .card.pattern .name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; }
@@ -667,5 +668,10 @@ b, .num { font-variant-numeric: tabular-nums; }
 @media (max-width: 360px) {
   .pk-calc { display: none; }
 }
+.addtag { display: inline-block; margin-left: 5px; color: var(--gold-text); white-space: nowrap; }
+.addtag small { margin-left: 3px; font-size: .8em; opacity: .85; }
+.tally .seam .addtag { font-size: 14px; animation: fintagIn .32s cubic-bezier(.3,1.6,.5,1); }
+.pk-sub { display: flex; align-items: center; gap: 4px; max-width: 100%; overflow: hidden; white-space: nowrap; }
+.pk-sub .addtag { margin-left: 0; font-family: var(--font-body); font-size: 11px; font-weight: 700; line-height: 1.35; }
 .tally .seam .fintag { margin-left: 6px; font-size: 12px; vertical-align: .12em; animation: fintagIn .32s cubic-bezier(.3,1.6,.5,1); }
 @keyframes fintagIn { from { opacity: 0; transform: scale(1.8); } }

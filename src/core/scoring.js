@@ -1,16 +1,16 @@
 // Chips × Mult evaluation for one placement. Returns a step-by-step breakdown so the UI
 // can replay it (Balatro-style tally) and the final integer score.
 import { TOOLS } from './tools.js';
-import { judgeSeam, seamValue, monoFactor, finishOf } from './seams.js';
+import { judgeSeam, addonsOf, seamValue, monoFactor, finishOf } from './seams.js';
 
 export const CELL_CHIPS = 5;
 
 /**
- * ctx: { lineCount, rowLines, colLines, monoLines, cleared, placedCells, streak,
- *        clearIndex, perfect, emptyAfter, coins, discardsLeft, boss, levels, topSeam, patterns }
+ * ctx: { lineCount, rowLines, colLines, rowIdx, colIdx, monoLines, cleared, pieceCells, placedCells,
+ *        streak, clearIndex, perfect, emptyAfter, coins, discardsLeft, boss, levels }
  * tools: tool instances (slot order)
- * Order: seam base → each cleared cell → streak → tool chips → tool +mult → tool ×mult
- *        → one-colour lines (×1 to ×2, see monoFactor) → boss.
+ * Order: shape → each add-on (added, never instead) → each cleared cell → streak → tool chips
+ *        → tool +mult → tool ×mult → one-colour lines (×1 to ×2, see monoFactor) → boss.
  */
 export function evaluate(ctx, tools) {
   const steps = [];
@@ -18,7 +18,7 @@ export function evaluate(ctx, tools) {
   if (!ctx.lineCount) {
     // Plain placement: small trickle so every move feels like progress.
     steps.push({ src: 'place', chips: ctx.placedCells });
-    return { chips: ctx.placedCells, mult: 1, score: ctx.placedCells, seam: null, finish: null, steps };
+    return { chips: ctx.placedCells, mult: 1, score: ctx.placedCells, seam: null, addons: [], finish: null, steps };
   }
 
   const seam = ctx.seam || judgeSeam(ctx);
@@ -27,6 +27,15 @@ export function evaluate(ctx, tools) {
   let chips = base.chips;
   let mult = base.mult;
   steps.push({ src: 'seam', seam, level, chips: base.chips, mult: base.mult, set: true });
+
+  const addons = ctx.addons || addonsOf(ctx);
+  for (const id of addons) {
+    const lv = (ctx.levels && ctx.levels[id]) || 1;
+    const v = seamValue(id, lv);
+    chips += v.chips;
+    mult += v.mult;
+    steps.push({ src: 'addon', seam: id, level: lv, chips: v.chips, mult: v.mult });
+  }
 
   const cellChips = ctx.cleared.reduce(
     (s, c) => s + (ctx.boss === 'ink' && c.color === 'black' ? 0 : CELL_CHIPS),
@@ -41,7 +50,7 @@ export function evaluate(ctx, tools) {
   }
 
   const effects = [];
-  const tctx = { ...ctx, seam, level };
+  const tctx = { ...ctx, seam, level, addons };
   tools.forEach((inst, slot) => {
     const def = TOOLS[inst.id];
     if (!def.score) return;
@@ -65,5 +74,5 @@ export function evaluate(ctx, tools) {
 
   mult = Math.max(1, Math.round(mult * 10) / 10);
   const score = Math.floor(chips * mult);
-  return { chips, mult, score, seam, level, finish, steps };
+  return { chips, mult, score, seam, level, addons, finish, steps };
 }

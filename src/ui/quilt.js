@@ -1,6 +1,7 @@
 // 조각누비: the run's keepsake. Every finished order adds one patch: its cloth is the colour the
 // player sewed most in that order, and it is quilted with the stitch of the seam they made most
-// (홈질 one running line, 겹누비 two, 세누비 dense lines, 십자수 a cross, 마무리 a border). If that seam was
+// other than 홈질 (홈질 one running line, 겹누비 two, 드문누비 two far apart, 세누비 dense lines, 십자수 a cross,
+// 등솔 one line down the middle, 감침질 slanted whip stitches on the edges, 시침질 one long basting line, 마무리 a border). If that seam was
 // mostly sewn in one colour the stitch is gold thread: flat for 납작누비, raised in ridges for 오목누비.
 // A failed order leaves a torn patch, a boss order a red knot in the corner. Rows are market days, so the quilt also reads as the map of the run.
 // It is stitched in on the reward sheet, laid out whole at the end, and kept in the 일지.
@@ -67,7 +68,20 @@ function quiltStitch(g, seam, w, h, color, finish = null, light = false) {
       g.setLineDash([Math.max(1.5, w * 0.05), Math.max(1, w * 0.04)]);
       for (let k = 0.24; k < 0.8; k += 0.1) line(m, h * k, w - m, h * k);
       break;
+    case 'gap': line(m, h * 0.27, w - m, h * 0.27); line(m, h * 0.73, w - m, h * 0.73); break;
     case 'cross': line(m, h / 2, w - m, h / 2); line(w / 2, m, w / 2, h - m); break;
+    case 'center': line(w / 2, m, w / 2, h - m); break; // 등솔: the seam down the middle
+    case 'edge': { // 감침질: short slanted whip stitches along the top and bottom edges
+      g.setLineDash([]);
+      const k = m * 0.75;
+      const s = Math.max(2, w * 0.07);
+      for (let x = m; x <= w - m - s * 0.5; x += s * 1.6) { line(x, k, x + s, k + s); line(x, h - k - s, x + s, h - k); }
+      break;
+    }
+    case 'whole': // 시침질: basting, long loose stitches across the patch
+      g.setLineDash([Math.max(4, w * 0.16), Math.max(3, w * 0.1)]);
+      line(m, m, w - m, h - m);
+      break;
     case 'perfect':
       for (const k of [m, m * 1.8]) {
         line(k, k, w - k, k); line(w - k, k, w - k, h - k);

@@ -5,7 +5,7 @@ import { SHAPES, SHAPE_BY_ID, COLORS } from './shapes.js';
 import { N, emptyBoard, canPlace, fitsAnywhere, paint, fullLines, clearLines, filledCount } from './board.js';
 import { TOOLS, TOOL_IDS, MAX_TOOLS, makeTool, sellPrice } from './tools.js';
 import { evaluate } from './scoring.js';
-import { SEAM_IDS, PATTERN_SEAMS, PATTERN_PRICE, startingLevels, judgeSeam, finishOf, upgradePatch } from './seams.js';
+import { SEAM_IDS, PATTERN_SEAMS, PATTERN_PRICE, startingLevels, judgeSeam, addonsOf, finishOf, upgradePatch } from './seams.js';
 
 export const SAVE_VERSION = 1;
 export const DAYS = 4;
@@ -34,7 +34,7 @@ export const ORDER_KINDS = [
 
 // Target for the small order of each day; big/boss multiply by ORDER_KINDS.scale.
 // Calibrated by tools/simulate.mjs.
-export const DAY_BASE = [450, 2500, 5800, 12000];
+export const DAY_BASE = [450, 2400, 5200, 9600];
 export const ENDLESS_GROWTH = 1.9; // must exceed the boss scale so targets keep rising
 
 export const BOSSES = {
@@ -239,11 +239,15 @@ function dominantColor(o) {
   return best || 'white';
 }
 
-/** The seam made most often in an order (ties go to the higher-ranked one); null if nothing was cleared. */
+/**
+ * The name an order's keepsake patch is stitched with: the shape or add-on made most often there,
+ * leaving out 홈질 (nearly every clear is one) unless nothing else was made. Ties go to the one
+ * higher in the table. null if nothing was cleared.
+ */
 function dominantSeam(o) {
   let best = null;
-  for (const id of SEAM_IDS) if ((o.seams?.[id] || 0) > (o.seams?.[best] || 0)) best = id;
-  return best;
+  for (const id of SEAM_IDS) if (id !== 'single' && (o.seams?.[id] || 0) > (o.seams?.[best] || 0)) best = id;
+  return best || ((o.seams?.single || 0) > 0 ? 'single' : null);
 }
 
 /**
@@ -284,13 +288,13 @@ export function preview(run, i, r, c) {
   if (!canPlace(run.board, shape, r, c)) return null;
   const painted = paint(run.board, shape, r, c, p.color);
   const lines = fullLines(painted);
-  const res = scorePlacement(run, painted, lines, shape, true);
+  const res = scorePlacement(run, painted, lines, shape, r, c, true);
   const o = run.order;
   const streakBreaks = !lines.length && o.streak > 0 && o.sinceClear + 1 >= STREAK_GRACE;
   return { lines, ...res.result, streak: res.ctx.streak, streakBreaks, completes: o.score + res.result.score >= o.target };
 }
 
-function scorePlacement(run, painted, lines, shape, dry) {
+function scorePlacement(run, painted, lines, shape, pr, pc, dry) {
   const { board: after, cleared } = clearLines(painted, lines);
   const o = run.order;
   const streak = lines.length ? o.streak + 1 : 0;
@@ -299,8 +303,11 @@ function scorePlacement(run, painted, lines, shape, dry) {
     lineCount: lines.length,
     rowLines: lines.filter((l) => l.type === 'row').length,
     colLines: lines.filter((l) => l.type === 'col').length,
+    rowIdx: lines.filter((l) => l.type === 'row').map((l) => l.index),
+    colIdx: lines.filter((l) => l.type === 'col').map((l) => l.index),
     monoLines: lines.filter((l) => l.mono).length,
     cleared,
+    pieceCells: shape.cells.map(([dr, dc]) => [pr + dr, pc + dc]),
     placedCells: shape.size,
     streak,
     clearIndex: o.clears + (lines.length ? 1 : 0),
@@ -311,6 +318,7 @@ function scorePlacement(run, painted, lines, shape, dry) {
     boss: o.boss,
   };
   ctx.seam = judgeSeam(ctx);
+  ctx.addons = addonsOf(ctx);
   // Tool state must not leak from previews: use copies when dry.
   let tools = run.tools;
   if (dry) {
@@ -339,7 +347,7 @@ export function place(run, i, r, c) {
 
   const painted = paint(run.board, shape, r, c, p.color);
   const lines = fullLines(painted);
-  const { ctx, after, cleared, result } = scorePlacement(run, painted, lines, shape, false);
+  const { ctx, after, cleared, result } = scorePlacement(run, painted, lines, shape, r, c, false);
 
   run.tray[i] = null;
   o.patchesLeft -= 1;
@@ -356,16 +364,19 @@ export function place(run, i, r, c) {
     run.stats.bestStreak = Math.max(run.stats.bestStreak, o.streak);
     if (ctx.perfect) run.stats.perfects += 1;
     if (ctx.monoLines) run.stats.monos += 1; // clears with at least one one-colour line
-    if (ctx.rowLines && ctx.colLines) run.stats.crosses += 1;
-    if (lines.length >= 3) run.stats.triples += 1;
+    if (ctx.addons.includes('cross')) run.stats.crosses += 1;
+    if (ctx.seam === 'triple') run.stats.triples += 1;
+    // every name the clear earned (its shape and each add-on) counts as made
     const sc = (run.stats.seamCounts ||= {});
-    sc[ctx.seam] = (sc[ctx.seam] || 0) + 1;
     o.seams ||= {};
-    o.seams[ctx.seam] = (o.seams[ctx.seam] || 0) + 1;
     const fin = finishOf(ctx);
-    if (fin) {
-      const f = ((o.finishes ||= {})[ctx.seam] ||= {});
-      f[fin] = (f[fin] || 0) + 1;
+    for (const id of [ctx.seam, ...ctx.addons]) {
+      sc[id] = (sc[id] || 0) + 1;
+      o.seams[id] = (o.seams[id] || 0) + 1;
+      if (fin) {
+        const f = ((o.finishes ||= {})[id] ||= {});
+        f[fin] = (f[fin] || 0) + 1;
+      }
     }
     run.tools.forEach((t, slot) => {
       const def = TOOLS[t.id];

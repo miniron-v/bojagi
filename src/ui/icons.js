@@ -95,8 +95,12 @@ export function seamIcon(id) {
   const spec = {
     single: { rows: [3] },
     double: { rows: [2, 3] },
+    gap: { rows: [1, 4] },
     triple: { rows: [2, 3, 4] },
     cross: { rows: [3], cols: [2] },
+    edge: { rows: [0] },
+    center: { cols: [3] }, // shown as the one seam down the middle (등솔)
+    whole: { rows: [3], piece: [[3, 1], [3, 2], [3, 3]] }, // the placed patch, gone with its line
     mono: { rows: [2, 3], mono: ['var(--c-blue)', 'var(--c-red)'] }, // the one-colour bonus, not a seam
     perfect: { rows: [3], empty: true },
   }[id] || { rows: [] };
@@ -123,13 +127,27 @@ export function seamIcon(id) {
   const stitchV = (c) => `<line x1="${o + (c + 0.5) * u}" y1="${o - 1.5}" x2="${o + (c + 0.5) * u}" y2="${o + n * u + 1.5}" stroke="#f3ead6" stroke-width="1.4" stroke-dasharray="2.2 1.6" stroke-linecap="round" opacity=".95"/>`;
   if (rows.length) {
     const r0 = Math.min(...rows);
-    out += glow(o - 0.6, o + r0 * u - 0.6, n * u + 1.2, rows.length * u + 1.2);
+    // one glow per run of neighbouring rows (드문누비's two rows sit apart)
+    const sorted = [...rows].sort((a, b) => a - b);
+    let start = sorted[0];
+    sorted.forEach((r, k) => {
+      if (sorted[k + 1] === r + 1) return;
+      out += glow(o - 0.6, o + start * u - 0.6, n * u + 1.2, (r - start + 1) * u + 1.2);
+      start = sorted[k + 1];
+    });
     // single-colour seams get a solid gold band so they read apart from mixed ones
     if (spec.mono) out += `<rect x="${o - 1.6}" y="${o + r0 * u - 1.6}" width="${n * u + 3.2}" height="${rows.length * u + 3.2}" rx="2" fill="none" stroke="var(--gold)" stroke-width="2"/>`;
   }
   for (const c of cols) out += glow(o + c * u - 0.6, o - 0.6, u + 1.2, n * u + 1.2);
   for (const r of rows) out += stitchH(r);
   for (const c of cols) out += stitchV(c);
+  if (spec.piece) {
+    // the patch that was just placed: outlined in gold, all of it inside the cleared line
+    const rs = spec.piece.map((p) => p[0]), cs = spec.piece.map((p) => p[1]);
+    const x0 = o + Math.min(...cs) * u, y0 = o + Math.min(...rs) * u;
+    const w = (Math.max(...cs) - Math.min(...cs) + 1) * u, h = (Math.max(...rs) - Math.min(...rs) + 1) * u;
+    out += `<rect x="${x0 - 1.4}" y="${y0 - 1.4}" width="${w + 2.8}" height="${h + 2.8}" rx="2" fill="none" stroke="var(--gold)" stroke-width="1.8" stroke-dasharray="3 1.6"/>`;
+  }
   if (spec.empty) {
     const star = (cx, cy, k) => `<path d="M${cx} ${cy - k} L${cx + k * 0.3} ${cy - k * 0.3} L${cx + k} ${cy} L${cx + k * 0.3} ${cy + k * 0.3} L${cx} ${cy + k} L${cx - k * 0.3} ${cy + k * 0.3} L${cx - k} ${cy} L${cx - k * 0.3} ${cy - k * 0.3}Z" fill="var(--gold)"/>`;
     out += star(13, 12, 4.5) + star(36, 37, 3.5) + star(37, 11, 2.5);

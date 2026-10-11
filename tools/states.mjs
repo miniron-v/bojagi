@@ -102,7 +102,7 @@ await page.evaluate(() => {
   Object.assign(m, { points: 312000, clears: 210, bestPoints: 48000, bestLevel: 6, wins: 1, challengesV: 2,
     challenges: { points300k: { best: 312000, done: true, claimed: true } } });
   m.quilts = [1, 2, 3, 4, 5].map((n) => ({ at: n, win: n === 2, day: n === 2 ? 4 : 2 + (n % 2), points: 20000 * n,
-    h: Array.from({ length: n === 2 ? 12 : 4 + n }, (_, i) => ({ color: ['blue', 'red', 'yellow', 'white', 'black'][(i * n) % 5], seam: ['single', 'double', 'cross', 'triple', 'perfect'][(i + n) % 5], ok: !(n !== 2 && i === 3 + n), boss: i % 3 === 2 })) }));
+    h: Array.from({ length: n === 2 ? 12 : 4 + n }, (_, i) => ({ color: ['blue', 'red', 'yellow', 'white', 'black'][(i * n) % 5], seam: ['single', 'double', 'gap', 'triple', 'cross', 'perfect', 'whole', 'edge', 'center'][(i + n) % 9], ok: !(n !== 2 && i === 3 + n), boss: i % 3 === 2 })) }));
   localStorage.removeItem('bojagi.run.v1');
   localStorage.setItem('bojagi.meta.v1', JSON.stringify(m));
 });
@@ -169,6 +169,17 @@ for (const [name, second] of [['aim-ridge', 'red'], ['aim-flat', 'blue']]) {
   await shot(name);
   await page.evaluate(() => { window.__bojagi.view.drag = null; window.__bojagi.view.handlers.hover(null); });
 }
+// the tally mid-way: a shape with add-ons joining its name (겹누비 + 시침질 + 감침질 · 오목누비)
+await inject(`R.beginOrder(run);
+  run.board = run.board.map(() => null);
+  for (let c = 0; c < 8; c++) if (c !== 2) { run.board[6 * 8 + c] = 'blue'; run.board[7 * 8 + c] = 'blue'; }
+  run.board[0] = 'white';
+  run.seams.double = 3; run.seams.edge = 2;
+  run.order.target = 1e7;
+  run.tray = [{ shape: 'i2_1', color: 'blue' }, null, null];`);
+await page.evaluate(() => window.__bojagi.view.handlers.drop(0, 6, 2, window.__bojagi.run.tray[0]));
+await page.waitForTimeout(1900);
+await shot('tally-addons');
 console.log(JSON.stringify({ errors }));
 await browser.close();
 

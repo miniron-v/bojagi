@@ -1,12 +1,13 @@
 // Balance simulator: plays many runs with a heuristic bot and reports where runs end.
 // Usage: node tools/simulate.mjs [runs=300] [bot=smart|greedy] [shop=value|rarity] [DAY_BASE e.g. 240,900,2200,5500]
 //        NEWBIE=1 restricts the tool pool to a first-time player's unlocks.
+//        COMMIT=<seam id> makes the planner put its pattern papers into that seam (e.g. COMMIT=edge).
 import * as R from '../src/core/run.js';
 import { SHAPE_BY_ID } from '../src/core/shapes.js';
 import { N, idx, paint, fullLines, clearLines, canPlace } from '../src/core/board.js';
 import { TOOLS, MAX_TOOLS } from '../src/core/tools.js';
 import { lockedIds } from '../src/core/unlocks.js';
-import { PATTERN_SEAMS, judgeSeam, seamValue, monoFactor } from '../src/core/seams.js';
+import { PATTERN_SEAMS, judgeSeam, addonsOf, seamValue, monoFactor } from '../src/core/seams.js';
 import { filledCount } from '../src/core/board.js';
 
 const RUNS = +process.argv[2] || 300;
@@ -60,10 +61,15 @@ function plannerMove(run) {
         const after = clearLines(pb, L).board;
         let g = 0;
         if (L.length) {
-          const ctx = { lineCount: L.length, rowLines: L.filter((l) => l.type === 'row').length, colLines: L.filter((l) => l.type === 'col').length, monoLines: L.filter((l) => l.mono).length, perfect: filledCount(after) === 0 };
-          const sm = judgeSeam(ctx);
-          const v = seamValue(sm, run.seams[sm] || 1);
-          g = (v.chips + L.length * 40) * v.mult * monoFactor(ctx);
+          const rowIdx = L.filter((l) => l.type === 'row').map((l) => l.index);
+          const colIdx = L.filter((l) => l.type === 'col').map((l) => l.index);
+          const ctx = { lineCount: L.length, rowLines: rowIdx.length, colLines: colIdx.length, rowIdx, colIdx,
+            monoLines: L.filter((l) => l.mono).length, perfect: filledCount(after) === 0,
+            pieceCells: sh.cells.map(([dr, dc]) => [r + dr, c + dc]) };
+          // shape + every add-on, each at its own level (as the game scores it, tools aside)
+          let chips = 0, mult = 0;
+          for (const id of [judgeSeam(ctx), ...addonsOf(ctx)]) { const v = seamValue(id, run.seams[id] || 1); chips += v.chips; mult += v.mult; }
+          g = (chips + L.length * 40) * mult * monoFactor(ctx);
         }
         nb.push({ board: after, used: [...st.used, i], first: st.first || { i, r, c }, val: st.val + g });
       }
@@ -122,6 +128,7 @@ function shopBot(run) {
     // the planner commits: it levels the seam it has made most often
     if (SHOP === 'value') {
       // pick a seam to build around once (the buildable seam made most so far), then keep feeding it
+      if (!run._commit && process.env.COMMIT) run._commit = process.env.COMMIT;
       if (!run._commit) {
         const counts = run.stats.seamCounts || {};
         run._commit = PATTERN_SEAMS.slice().sort((a, b) => (counts[b] || 0) - (counts[a] || 0))[0];
@@ -182,4 +189,4 @@ console.log('ends:', Object.entries(ends).sort().map(([k, v]) => `${k}=${v}`).jo
 const q = (a, p) => { const b = a.slice().sort((x, y) => x - y); return b[Math.floor((b.length - 1) * p)]; };
 console.log(`run points  p25 ${q(runPoints, 0.25)}  median ${q(runPoints, 0.5)}  p75 ${q(runPoints, 0.75)}  p90 ${q(runPoints, 0.9)}  mean ${Math.round(runPoints.reduce((a, b) => a + b, 0) / runPoints.length)}`);
 console.log(`run clears  median ${q(runClears, 0.5)}  mean ${Math.round(runClears.reduce((a, b) => a + b, 0) / runClears.length)}`);
-console.log(`top seam level  median ${q(runLevels, 0.5)}  p90 ${q(runLevels, 0.9)}  max ${Math.max(...runLevels)}  >=10: ${runLevels.filter((v) => v >= 10).length}  >=7: ${runLevels.filter((v) => v >= 7).length}`);
+console.log(`top seam level  median ${q(runLevels, 0.5)}  p90 ${q(runLevels, 0.9)}  max ${Math.max(...runLevels)}  runs reaching` + [6, 7, 8, 9, 10].map((k) => `  >=${k}: ${runLevels.filter((v) => v >= k).length}`).join(''));

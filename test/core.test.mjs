@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { SHAPES, SHAPE_BY_ID } from '../src/core/shapes.js';
 import { emptyBoard, canPlace, paint, fullLines, clearLines, idx } from '../src/core/board.js';
 import { evaluate } from '../src/core/scoring.js';
-import { finishOf, upgradePatch } from '../src/core/seams.js';
+import { finishOf, upgradePatch, PATTERN_SEAMS } from '../src/core/seams.js';
 import { makeTool, TOOL_IDS, TOOLS } from '../src/core/tools.js';
 import * as R from '../src/core/run.js';
 
@@ -47,8 +47,10 @@ test('board: knots break mono seams', () => {
   assert.equal(fullLines(b)[0].mono, null);
 });
 
+// cleared lines as the scorer sees them: row and column indices (row 1 is neither edge nor centre)
+const L = (rowIdx, colIdx = []) => ({ lineCount: rowIdx.length + colIdx.length, rowLines: rowIdx.length, colLines: colIdx.length, rowIdx, colIdx });
 const baseCtx = (over = {}) => ({
-  lineCount: 1, rowLines: 1, colLines: 0, monoLines: 0,
+  ...L([1]), monoLines: 0,
   cleared: Array.from({ length: 8 }, (_, c) => ({ r: 0, c, color: 'red' })),
   placedCells: 3, streak: 1, clearIndex: 1, perfect: false, emptyAfter: 50,
   coins: 0, discardsLeft: 2, boss: null, ...over,
@@ -70,11 +72,12 @@ test('scoring: single line, streak, one-colour line', () => {
 });
 
 test('scoring: phases apply chips, then +mult, then ×mult regardless of slot order', () => {
-  const a = evaluate(baseCtx({ lineCount: 2, colLines: 1 }), [makeTool('scissors'), makeTool('thimble'), makeTool('needlecase')]);
-  const b = evaluate(baseCtx({ lineCount: 2, colLines: 1 }), [makeTool('needlecase'), makeTool('thimble'), makeTool('scissors')]);
+  const a = evaluate(baseCtx(L([1], [2])), [makeTool('scissors'), makeTool('thimble'), makeTool('needlecase')]);
+  const b = evaluate(baseCtx(L([1], [2])), [makeTool('needlecase'), makeTool('thimble'), makeTool('scissors')]);
   assert.equal(a.score, b.score);
-  // 십자솔기: chips 80 + 40 + 50 = 170; mult 4 + 3 = 7; ×2 = 14 → 2380
-  assert.equal(a.seam, 'cross');
+  // 홈질 + 십자수: chips 30 + 50 + 40 + 50 = 170; mult 1 + 3 + 3 = 7; ×2 = 14 → 2380
+  assert.equal(a.seam, 'single');
+  assert.deepEqual(a.addons, ['cross']);
   assert.equal(a.score, 2380);
 });
 
@@ -204,37 +207,90 @@ test('run: targets grow monotonically', () => {
   }
 });
 
-test('seams: the judged seam is the shape made, whatever the levels', async () => {
-  const { judgeSeam, SEAMS, seamValue } = await import('../src/core/seams.js');
-  // three parallel lines are 세누비 even when 겹누비 has been leveled far past it (the reported bug)
-  const triple = { lineCount: 3, rowLines: 3, colLines: 0, monoLines: 0, perfect: false };
+test('seams: the shape is what was made, whatever the levels (no inheriting)', async () => {
+  const { judgeSeam, SHAPE_IDS, seamValue } = await import('../src/core/seams.js');
+  // three parallel lines are 세누비 at 세누비's own level, however far 겹누비 has been leveled
+  const triple = L([1, 2, 5]);
   assert.equal(judgeSeam(triple), 'triple');
   for (const lv of [1, 4, 9]) {
-    const ctx = { ...triple, levels: { double: lv } };
-    assert.equal(evaluate({ ...baseCtx(ctx), ...ctx, cleared: [] }, []).seam, 'triple', `double lv ${lv}`);
+    const r = evaluate(baseCtx({ ...triple, levels: { double: lv, triple: 1 }, cleared: [] }), []);
+    assert.equal(r.seam, 'triple', `double lv ${lv}`);
+    assert.equal(r.level, 1);
   }
-  // rank and base value point the same way
-  const vals = SEAMS.map((x) => seamValue(x.id, 1)).map((v) => v.chips * v.mult);
-  for (let i = 1; i < vals.length; i++) assert.ok(vals[i] < vals[i - 1], SEAMS[i].id);
+  // shapes: rank and base value point the same way
+  const vals = SHAPE_IDS.map((id) => seamValue(id, 1)).map((v) => v.chips * v.mult);
+  for (let i = 1; i < vals.length; i++) assert.ok(vals[i] < vals[i - 1], SHAPE_IDS[i]);
 });
 
-test('seams: ranking picks the highest hand', async () => {
+test('seams: the shape comes from the direction with more lines; spacing names the pair', async () => {
   const { judgeSeam } = await import('../src/core/seams.js');
-  const j = (o) => judgeSeam({ lineCount: 1, rowLines: 1, colLines: 0, monoLines: 0, perfect: false, ...o });
-  assert.equal(j({}), 'single');
-  assert.equal(j({ lineCount: 2, rowLines: 2 }), 'double');
-  assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1 }), 'cross');
-  assert.equal(j({ lineCount: 3, rowLines: 3 }), 'triple');
-  assert.equal(j({ lineCount: 3, rowLines: 2, colLines: 1 }), 'triple');
-  assert.equal(j({ perfect: true }), 'perfect');
-  assert.equal(j({ lineCount: 0 }), null);
-  // colour is a bonus on top of the shape, never a seam of its own (a leveled 겹누비 stays 겹누비)
-  assert.equal(j({ lineCount: 2, rowLines: 2, monoLines: 2 }), 'double');
-  assert.equal(j({ lineCount: 2, rowLines: 1, colLines: 1, monoLines: 1 }), 'cross');
+  const j = (rows, cols = []) => judgeSeam(L(rows, cols));
+  assert.equal(j([1]), 'single');
+  assert.equal(j([], [6]), 'single');
+  assert.equal(j([1, 2]), 'double', '붙은 2줄');
+  assert.equal(j([], [5, 6]), 'double');
+  assert.equal(j([1, 5]), 'gap', '떨어진 2줄');
+  assert.equal(j([0, 7]), 'gap');
+  assert.equal(j([1, 2, 3]), 'triple');
+  assert.equal(j([0, 3, 6]), 'triple', '3줄이면 간격과 상관없이 세누비');
+  // rows and columns together: the larger group names the shape, 십자수 rides on top
+  assert.equal(j([1, 2], [5]), 'double');
+  assert.equal(j([4], [1, 6]), 'gap');
+  assert.equal(j([1], [5]), 'single');
+  // a tie between the two directions goes to the higher-ranked shape, never to a value
+  assert.equal(j([1, 2], [3, 6]), 'gap');
+  assert.equal(j([], []), null);
+  // colour never changes the shape
+  assert.equal(judgeSeam({ ...L([1, 2]), monoLines: 2 }), 'double');
+});
+
+test('seams: add-ons are earned together, each from what can be seen', async () => {
+  const { addonsOf } = await import('../src/core/seams.js');
+  const a = (rows, cols = [], over = {}) => addonsOf({ ...L(rows, cols), ...over });
+  assert.deepEqual(a([1]), []);
+  assert.deepEqual(a([0]), ['edge'], '가장자리 줄');
+  assert.deepEqual(a([], [7]), ['edge']);
+  assert.deepEqual(a([3]), ['center'], '가운데 줄');
+  assert.deepEqual(a([], [4]), ['center']);
+  assert.deepEqual(a([1], [2]), ['cross']);
+  assert.deepEqual(a([0], [4]), ['cross', 'edge', 'center'], '가로+세로면 자리 이름이 함께 붙음');
+  assert.deepEqual(a([1], [], { perfect: true }), ['perfect']);
+  // 시침질: every cell of the placed patch sits in a cleared line
+  assert.deepEqual(a([1], [], { pieceCells: [[1, 2], [1, 3]] }), ['whole']);
+  assert.deepEqual(a([1], [], { pieceCells: [[1, 2], [2, 2]] }), [], '한 칸이라도 남으면 아님');
+  assert.deepEqual(a([1], [5], { pieceCells: [[1, 4], [1, 5], [2, 5]] }), ['cross', 'whole']);
+  assert.deepEqual(a([], [], { pieceCells: [[1, 1]] }), []);
+});
+
+test('seams: every add-on adds its chips and mult, so an add-on never lowers the score', async () => {
+  const { seamValue } = await import('../src/core/seams.js');
+  // the common cases keep their old values: 홈질 + 십자수 = 80 × 4, one line clearing the hoop = 160 × 8
+  const cross = evaluate(baseCtx({ ...L([1], [2]), cleared: [] }), []);
+  assert.deepEqual([cross.chips, cross.mult], [80, 4]);
+  const perfect = evaluate(baseCtx({ perfect: true, cleared: [] }), []);
+  assert.deepEqual([perfect.seam, perfect.addons], ['single', ['perfect']]);
+  assert.deepEqual([perfect.chips, perfect.mult], [160, 8]);
+  // 마무리 on top of a leveled 겹누비 adds to it: no 역전 at any level of either
+  for (const dl of [1, 5, 10]) for (const pl of [1, 3]) {
+    const levels = { double: dl, perfect: pl };
+    const plain = evaluate(baseCtx({ ...L([1, 2]), levels, cleared: [] }), []);
+    const done = evaluate(baseCtx({ ...L([1, 2]), levels, perfect: true, cleared: [] }), []);
+    assert.equal(done.seam, 'double');
+    assert.ok(done.score > plain.score, `겹누비 ${dl} + 마무리 ${pl}`);
+    const v = seamValue('perfect', pl);
+    assert.deepEqual([done.chips - plain.chips, done.mult - plain.mult], [v.chips, v.mult]);
+  }
+  // every add-on's value is non-negative at every level
+  for (const id of PATTERN_SEAMS) for (let lv = 1; lv <= 12; lv++) {
+    const v = seamValue(id, lv);
+    assert.ok(v.chips >= 0 && v.mult >= 0, `${id} ${lv}`);
+  }
+  // the common add-ons add chips only (a mult on 홈질's ×1 would multiply most clears)
+  for (const id of ['edge', 'center', 'whole']) assert.equal(seamValue(id, 7).mult, 0, id);
 });
 
 test('seams: one-colour lines scale the whole score by their share, up to ×2', () => {
-  const pair = (monoLines) => evaluate(baseCtx({ lineCount: 2, rowLines: 2, monoLines, levels: { double: 5 },
+  const pair = (monoLines) => evaluate(baseCtx({ ...L([1, 2]), monoLines, levels: { double: 5 },
     cleared: Array.from({ length: 16 }, (_, k) => ({ r: k >> 3, c: k & 7, color: 'red' })) }), []);
   const plain = pair(0);
   assert.equal(plain.seam, 'double');
@@ -244,8 +300,8 @@ test('seams: one-colour lines scale the whole score by their share, up to ×2', 
 });
 
 test('seams: 겹누비 base value', () => {
-  const two = evaluate(baseCtx({ lineCount: 2, rowLines: 2, cleared: Array.from({ length: 16 }, (_, k) => ({ r: k >> 3, c: k & 7, color: 'red' })) }), []);
-  assert.equal(two.score, (60 + 80) * 3);
+  const two = evaluate(baseCtx({ ...L([1, 2]), cleared: Array.from({ length: 16 }, (_, k) => ({ r: k >> 3, c: k & 7, color: 'red' })) }), []);
+  assert.equal(two.score, (70 + 80) * 3);
 });
 
 test('patterns: buying raises a seam level and grows the manual', () => {
@@ -262,7 +318,7 @@ test('patterns: buying raises a seam level and grows the manual', () => {
   assert.ok(res.ok);
   assert.equal(run.seams[id], 2);
   assert.equal(run.coins, coins - 3);
-  assert.equal(run.tools[0].data.mult, 2);
+  assert.equal(run.tools[0].data.mult, 1, '교본은 본마다 +1');
   assert.ok(!R.buyPattern(run, 0).ok);
 });
 
@@ -496,7 +552,7 @@ test('patterns: only buildable seams are sold', () => {
     R.collectReward(run);
     R.chooseGift(run, 0);
     for (let k = 0; k < 4; k++) {
-      assert.ok(run.shop.patterns.every((p) => ['double', 'cross', 'triple'].includes(p.id)));
+      assert.ok(run.shop.patterns.every((p) => p.id !== 'single' && PATTERN_SEAMS.includes(p.id)));
       R.reroll(run);
     }
   }
@@ -581,7 +637,7 @@ test('migrate: saves from before colour became a finish drop the old seam ids ev
   run.history = [{ kind: 0, ok: true, color: 'red', seam: 'twinMono', score: 500 }, { kind: 1, ok: true, color: 'blue', seam: 'double', score: 900 }];
   run.shop = { offers: [], patterns: [{ id: 'mono', sold: false }, { id: 'cross', sold: false }], rerollCost: 2 };
   const m = R.migrate(JSON.parse(JSON.stringify(run)));
-  assert.deepEqual(Object.keys(m.seams).sort(), ['cross', 'double', 'perfect', 'single', 'triple']);
+  assert.deepEqual(Object.keys(m.seams).sort(), ['center', 'cross', 'double', 'edge', 'gap', 'perfect', 'single', 'triple', 'whole']);
   // an old 오목누비 patch keeps its name as a finish on the two-line stitch
   assert.equal(m.history[0].seam, 'double');
   assert.equal(m.history[0].finish, 'ridge');
@@ -596,7 +652,7 @@ test('finish: all lines one colour is 오목누비, some is 납작누비, none i
   assert.equal(finishOf({ lineCount: 1, monoLines: 1 }), 'ridge', '한 줄도 그 줄이 한 색이면 오목누비');
   assert.equal(finishOf({ lineCount: 3, monoLines: 0 }), null);
   assert.equal(finishOf({ lineCount: 0, monoLines: 0 }), null);
-  const r = evaluate(baseCtx({ lineCount: 2, rowLines: 2, monoLines: 1,
+  const r = evaluate(baseCtx({ ...L([1, 2]), monoLines: 1,
     cleared: Array.from({ length: 16 }, (_, k) => ({ r: k >> 3, c: k & 7, color: 'red' })) }), []);
   assert.equal(r.finish, 'flat');
   assert.equal(r.steps.find((s) => s.src === 'mono').finish, 'flat');
@@ -622,9 +678,10 @@ test('finish: placing a one-colour line records 오목누비 on the order and in
   assert.equal(R.preview(run, 0, 0, 6).finish, 'ridge', '예고에도 마감이 실림');
   run.order.target = 1; // this clear finishes the order, so it is logged
   R.place(run, 0, 0, 6);
-  assert.deepEqual(run.order.finishes, { single: { ridge: 1 } });
+  // the top row is an edge, and the domino vanished whole: every name it earned keeps the finish
+  assert.deepEqual(run.order.finishes, { single: { ridge: 1 }, whole: { ridge: 1 }, edge: { ridge: 1 } });
   const h = run.history.at(-1);
-  assert.equal(h.seam, 'single');
+  assert.equal(h.seam, 'whole', '조각누비 땀은 홈질 말고 가장 많이 지은 이름(동률은 표 순서)');
   assert.equal(h.finish, 'ridge');
 });
 
@@ -650,4 +707,56 @@ test('discard swaps only the patches in hand: an emptied slot stays empty', () =
   run.tray = [null, null, { shape: 'dot_0', color: 'red' }];
   R.discard(run);
   assert.deepEqual(run.tray.map(Boolean), [false, false, true]);
+});
+
+test('keepsake: the commonest name other than 홈질 stitches the patch; 홈질 only when nothing else', () => {
+  const run = R.newRun({ seed: 4 });
+  R.beginOrder(run);
+  run.board = emptyBoard();
+  for (let c = 0; c < 7; c++) run.board[idx(1, c)] = 'red'; // row 1: not an edge, not the centre
+  run.board[idx(5, 5)] = 'blue';
+  run.tray = [{ shape: 'dot_0', color: 'blue' }, { shape: 'dot_0', color: 'blue' }, null];
+  run.order.target = 1;
+  R.place(run, 0, 1, 7);
+  assert.deepEqual(run.order.seams, { single: 1, whole: 1 });
+  assert.equal(run.history.at(-1).seam, 'whole');
+  // stats count every name made, and 세누비/십자수 counters follow the names
+  assert.equal(run.stats.seamCounts.whole, 1);
+});
+
+test('tools: 인두 starts each order from 0 and grows +3 per clear; 교본 costs 6', () => {
+  const run = R.newRun({ seed: 8 });
+  run.tools.push(makeTool('iron'));
+  assert.equal(run.tools[0].data.mult, 0);
+  R.beginOrder(run);
+  run.board = emptyBoard();
+  for (let c = 0; c < 7; c++) run.board[idx(1, c)] = 'red';
+  run.board[idx(5, 5)] = 'blue';
+  run.tray = [{ shape: 'dot_0', color: 'blue' }, { shape: 'dot_0', color: 'blue' }, null];
+  run.order.target = 1e9;
+  R.place(run, 0, 1, 7);
+  assert.equal(run.tools[0].data.mult, 3);
+  run.orderIdx = 1;
+  R.prepareOrder(run);
+  assert.equal(run.tools[0].data.mult, 0, '주문마다 처음부터');
+  assert.equal(TOOLS.manual.price, 6);
+});
+
+test('stats: 세누비 and 십자수 counters follow the names, not the raw line count', () => {
+  const run = R.newRun({ seed: 6 });
+  R.beginOrder(run);
+  run.board = emptyBoard();
+  // rows 2 and 3 full but one cell, column 0 full but those same cells' column: one dot clears 2 rows + 1 column
+  for (let c = 1; c < 8; c++) { run.board[idx(2, c)] = 'red'; run.board[idx(3, c)] = 'red'; }
+  for (let r = 0; r < 8; r++) if (r !== 2 && r !== 3) run.board[idx(r, 0)] = 'red';
+  run.board[idx(3, 0)] = 'red';
+  run.board[idx(6, 6)] = 'blue';
+  run.tray = [{ shape: 'dot_0', color: 'blue' }, { shape: 'dot_0', color: 'blue' }, null];
+  run.order.target = 1e9;
+  const pv = R.preview(run, 0, 2, 0);
+  assert.equal(pv.seam, 'double', '가로 2줄 + 세로 1줄은 겹누비 + 십자수');
+  assert.ok(pv.addons.includes('cross'));
+  R.place(run, 0, 2, 0);
+  assert.equal(run.stats.triples, 0);
+  assert.equal(run.stats.crosses, 1);
 });

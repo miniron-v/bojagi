@@ -1,6 +1,6 @@
 // Sewing tools = the score engine (Balatro jokers).
 // score(ctx, inst) returns effects: { chips } | { mult } | { xmult }. ctx.seam / ctx.level name the
-// seam hand being scored (see seams.js) so tools can build around one hand.
+// shape being scored and ctx.addons the add-ons on top (see seams.js), so tools can build around them.
 // Phases are applied in fixed order (chips → +mult → ×mult), so slot order never matters.
 
 import { COLORS, COLOR_NAMES } from './shapes.js';
@@ -51,17 +51,18 @@ const defs = [
   },
   {
     id: 'scissors', name: '가위', rarity: 2, price: 5, art: 'scissors',
-    desc: () => '겹누비·십자수·세누비로 지울 때 배수 ×2',
-    score: (ctx) => (['double', 'cross', 'triple'].includes(ctx.seam) ? [{ xmult: 2 }] : []),
+    desc: () => '겹누비·드문누비·세누비·십자수로 지울 때 배수 ×2',
+    score: (ctx) => (['double', 'gap', 'triple'].includes(ctx.seam) || ctx.addons.includes('cross') ? [{ xmult: 2 }] : []),
   },
   {
     id: 'iron', name: '인두', rarity: 3, price: 8, art: 'iron',
-    desc: (inst) => `줄을 지울 때 배수 +${inst.data.mult || 0} (지울 때마다 +1씩 자람)`,
-    init: () => ({ mult: 1 }),
+    desc: (inst) => `줄을 지울 때 배수 +${inst.data.mult || 0} (지울 때마다 +3씩 자람, 주문마다 처음부터)`,
+    init: () => ({ mult: 0 }),
     badge: (inst) => `+${inst.data.mult}`,
+    onOrderStart: (inst) => { inst.data.mult = 0; },
     score: (ctx, inst) => (ctx.lineCount && inst.data.mult ? [{ mult: inst.data.mult }] : []),
     after: (ctx, inst) => {
-      if (ctx.lineCount >= 1) { inst.data.mult += 1; return true; }
+      if (ctx.lineCount >= 1) { inst.data.mult += 3; return true; }
       return false;
     },
   },
@@ -99,14 +100,14 @@ const defs = [
     desc: () => '마무리로 지울 때 배수 ×4, 지운 뒤 빈칸이 48칸 이상이면 배수 ×2',
     score: (ctx) => {
       if (!ctx.lineCount) return [];
-      if (ctx.seam === 'perfect' || ctx.perfect) return [{ xmult: 4 }];
+      if (ctx.addons.includes('perfect')) return [{ xmult: 4 }];
       return ctx.emptyAfter >= 48 ? [{ xmult: 2 }] : [];
     },
   },
   {
     id: 'hoop', name: '밀대', rarity: 3, price: 8, art: 'roller',
     desc: () => '십자수로 지울 때 배수 ×3',
-    score: (ctx) => (ctx.seam === 'cross' ? [{ xmult: 3 }] : []),
+    score: (ctx) => (ctx.addons.includes('cross') ? [{ xmult: 3 }] : []),
   },
   {
     id: 'artisan', name: '장인의 손', rarity: 3, price: 8, art: 'hand',
@@ -119,21 +120,22 @@ const defs = [
     score: (ctx) => {
       if (!ctx.lineCount || !ctx.levels) return [];
       const top = Math.max(...Object.values(ctx.levels));
-      return top >= 2 && ctx.level === top ? [{ xmult: 2 }] : [];
+      const made = [ctx.seam, ...ctx.addons];
+      return top >= 2 && made.some((id) => (ctx.levels[id] || 1) === top) ? [{ xmult: 2 }] : [];
     },
   },
   {
-    id: 'manual', name: '침선 교본', rarity: 2, price: 5, art: 'book',
-    desc: (inst) => `줄을 지울 때 배수 +${inst.data.mult || 0} (본을 살 때마다 +2씩 자람)`,
+    id: 'manual', name: '침선 교본', rarity: 2, price: 6, art: 'book',
+    desc: (inst) => `줄을 지울 때 배수 +${inst.data.mult || 0} (본을 살 때마다 +1씩 자람)`,
     init: () => ({ mult: 0 }),
     badge: (inst) => `+${inst.data.mult}`,
-    onPattern: (inst) => { inst.data.mult += 2; },
+    onPattern: (inst) => { inst.data.mult += 1; },
     score: (ctx, inst) => (ctx.lineCount && inst.data.mult ? [{ mult: inst.data.mult }] : []),
   },
   {
     id: 'sleeve', name: '색동 소매', rarity: 1, price: 4, art: 'sleeve',
-    desc: () => '겹누비·십자수로 지울 때 점 +80',
-    score: (ctx) => (ctx.seam === 'double' || ctx.seam === 'cross' ? [{ chips: 80 }] : []),
+    desc: () => '겹누비·드문누비·십자수로 지울 때 점 +80',
+    score: (ctx) => (ctx.seam === 'double' || ctx.seam === 'gap' || ctx.addons.includes('cross') ? [{ chips: 80 }] : []),
   },
   {
     id: 'coins', name: '전대', rarity: 3, price: 7, art: 'coins',
