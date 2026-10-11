@@ -5,6 +5,7 @@
 //      ancestor that clips), unless it lives inside a scroller
 //   3. no text is cut off or ellipsized inside a box that hides overflow
 //   4. siblings laid out by a flex/grid container do not overlap
+//   5. a row marked data-one-line (the order card's score row) never wraps onto a second line
 // Any violation fails the run (exit code 1), so `npm run audit:ui` can gate a deploy.
 // Usage: node tools/ui-audit.mjs [--shots]   (screenshots go to shots/audit/)
 import { chromium } from 'playwright-core';
@@ -47,7 +48,7 @@ const SCENARIOS = {
   bossIntro: { run: `${BIG_RUN} run.orderIdx = 2; run.bosses[3] = 'knots'; R.prepareOrder(run);`, open: '' },
   seams: { run: `${BIG_RUN} R.prepareOrder(run); R.beginOrder(run);`, open: 'ui.showSeams()' },
   pause: { run: `${BIG_RUN} R.prepareOrder(run); R.beginOrder(run);`, open: 'ui.showPause()' },
-  reward: { run: `${BIG_RUN} R.prepareOrder(run); R.beginOrder(run); run.phase = 'reward'; run.reward = { lines: [{ label: '큰 주문 완료', coins: 4 }, { label: '남은 조각 17개', coins: 5 }, { label: '이자 (5냥마다 1냥)', coins: 4 }, { label: '복주머니', coins: 2 }], total: 15 };`, open: '' },
+  reward: { run: `${BIG_RUN} R.prepareOrder(run); R.beginOrder(run); run.phase = 'reward'; run.reward = { lines: [{ label: '큰 주문 완료', coins: 4 }, { label: '안 쓴 조각 17개', coins: 5 }, { label: '이자 (5냥마다 1냥)', coins: 4 }, { label: '복주머니', coins: 2 }], total: 15 };`, open: '' },
   gift: { run: "run.phase = 'gift';", open: '' },
   shop: { run: `${BIG_RUN} R.prepareOrder(run); run.phase = 'reward'; run.reward = { lines: [], total: 0 }; run.gift = null; R.collectReward(run);`, open: '' },
   over: {
@@ -61,6 +62,13 @@ const SCENARIOS = {
     run: `${BIG_RUN} R.prepareOrder(run); R.beginOrder(run);
       for (let r = 5; r < 8; r++) for (let c = 0; c < 8; c++) run.board[r * 8 + c] = c === 4 && r === 6 ? null : 'red';
       for (let r = 0; r < 8; r++) if (r !== 6) run.board[r * 8 + 4] = 'red';
+      run.tray = [{ shape: 'dot_0', color: 'red' }, null, null];`,
+    open: "window.__bojagi.view.handlers.hover({ i: 0, r: 6, c: 4 })",
+  },
+  // the same forecast deep in the night shift: eight-digit score, nine-digit target and arrival
+  aimBig: {
+    run: `${BIG_RUN} run.day = 9; R.prepareOrder(run); R.beginOrder(run); run.order.target = 987654321; run.order.score = 87654321;
+      for (let r = 5; r < 8; r++) for (let c = 0; c < 8; c++) run.board[r * 8 + c] = c === 4 && r === 6 ? null : 'red';
       run.tray = [{ shape: 'dot_0', color: 'red' }, null, null];`,
     open: "window.__bojagi.view.handlers.hover({ i: 0, r: 6, c: 4 })",
   },
@@ -151,6 +159,21 @@ function inspect() {
         if (w > 2 && h > 2) bad.push(`overlap: ${path(kids[i])} × ${path(kids[j])} (${Math.round(w)}×${Math.round(h)})`);
       }
     }
+  }
+  // rows that must stay on one line: every piece of text in them sits on the same line
+  for (const row of app.querySelectorAll('[data-one-line]')) {
+    if (!visible(row)) continue;
+    const tops = [];
+    const walk = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    for (let t = walk.nextNode(); t; t = walk.nextNode()) {
+      if (!t.textContent.trim() || !visible(t.parentElement)) continue;
+      const range = document.createRange();
+      range.selectNodeContents(t);
+      for (const rc of range.getClientRects()) if (rc.width > 0) tops.push(rc);
+    }
+    // two boxes are on different lines when one starts below the other's middle
+    const wraps = tops.some((a) => tops.some((b) => b.top > a.top + a.height / 2));
+    if (wraps) bad.push(`wraps onto a second line: ${path(row)}`);
   }
   return [...new Set(bad)];
 }

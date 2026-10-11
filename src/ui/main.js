@@ -14,7 +14,7 @@ import { drawQuilt, shareText, stitchIn, patchCaption, keepsakeOf } from './quil
 import * as store from './store.js';
 import { lockedIds, isUnlocked, progress } from '../core/unlocks.js';
 import { recordRun as writeRecords, dailyStreakAlive } from '../core/records.js';
-import { fmt, fmtBig, fmtMult, kindName, dayName, bestDayLabel } from './format.js';
+import { fmt, fmtBig, fmtScore, fmtMult, kindName, dayName, bestDayLabel } from './format.js';
 import { SEAMS, SEAM_BY_ID, FINISH_BY_ID, seamValue, PATTERN_PRICE } from '../core/seams.js';
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -23,7 +23,7 @@ const el = {
   title: $('#title'), game: $('#game'), modal: $('#modal'), sheet: $('#sheet'), toast: $('#toast'),
   day: $('#hud-day'), dayMax: $('#hud-daymax'), kind: $('#hud-kind'), score: $('#hud-score'), target: $('#hud-target'),
   fill: $('#hud-fill'), ghost: $('#hud-ghost'), bar: $('#hud-bar'), patches: $('#hud-patches'), discards: $('#hud-discards'),
-  coins: $('#hud-coins'), boss: $('#hud-boss'), tools: $('#hud-tools'), tally: $('#tally'), hint: $('#hint'),
+  boss: $('#hud-boss'), tools: $('#hud-tools'), tally: $('#tally'), hint: $('#hint'),
   discardBtn: $('#btn-discard'), pause: $('#btn-pause'), statPatches: $('#stat-patches'), streak: $('#hud-streak'),
   seamBtn: $('#btn-seams'), seamTag: $('#hud-seam'), seamName: $('#hud-seam-name'),
   order: $('.order'), peek: $('#peek'), proj: $('#hud-proj'),
@@ -49,7 +49,6 @@ setEnabled(settings.sound);
 setAmbient(settings.sound && settings.ambient !== false);
 el.pause.innerHTML = glyph.pause;
 el.seamBtn.innerHTML = glyph.scroll;
-$('#ic-coin').innerHTML = glyph.coin;
 $('#ic-patch').innerHTML = glyph.patch;
 $('#ic-reroll').innerHTML = glyph.reroll;
 
@@ -169,6 +168,17 @@ function renderTools(container, tools, { onTap, empties = true, sellTags = false
   }
 }
 
+/**
+ * The patches counter shows patches still to come: the order's count without the ones already dealt
+ * into the tray, so it moves when a new tray is dealt, not when a patch is placed. Returns that count.
+ */
+function setPatches() {
+  const toCome = Math.max(0, run.order.patchesLeft - run.tray.filter(Boolean).length);
+  if (el.patches.textContent !== String(toCome)) { el.patches.textContent = toCome; bump(el.patches); }
+  el.statPatches.classList.toggle('low', toCome <= 3);
+  return toCome;
+}
+
 function renderHud() {
   if (!run || !run.order) return;
   const o = run.order;
@@ -176,12 +186,10 @@ function renderHud() {
   el.dayMax.hidden = run.day > R.DAYS;
   el.kind.textContent = kindName(o.kind) + (run.mode === 'daily' ? ' · 오늘의 의뢰' : '');
   el.kind.classList.toggle('boss', !!o.boss);
-  el.target.textContent = fmt(o.target);
-  el.patches.textContent = o.patchesLeft;
-  el.statPatches.classList.toggle('low', o.patchesLeft <= 5);
+  el.target.textContent = fmtScore(o.target);
+  setPatches();
   el.seamName.textContent = seamLabel(signatureSeam());
   el.discards.textContent = o.discardsLeft;
-  el.coins.textContent = run.coins;
   el.discardBtn.disabled = o.discardsLeft <= 0 || run.phase !== 'play';
   el.discardBtn.classList.toggle('urge', !!o.stuck && o.discardsLeft > 0);
   if (o.boss) {
@@ -218,7 +226,7 @@ function animateScore() {
     const diff = target - shownScore;
     shownScore += Math.sign(diff) * Math.max(1, Math.ceil(Math.abs(diff) * 0.16));
     if ((diff > 0 && shownScore > target) || (diff < 0 && shownScore < target)) shownScore = target;
-    el.score.textContent = fmt(shownScore);
+    el.score.textContent = fmtScore(shownScore);
   }
 }
 requestAnimationFrame(animateScore);
@@ -457,7 +465,7 @@ function enterGame() {
   tallyJob = null;
   showScreen('game');
   shownScore = run.order ? run.order.score : 0;
-  el.score.textContent = fmt(shownScore);
+  el.score.textContent = fmtScore(shownScore);
   el.tally.classList.remove('show', 'preview');
   clearPeek();
   view.setBoard(run.board);
@@ -574,7 +582,7 @@ function begin() {
   renderHud();
   syncInput();
   patchWarned = false;
-  if (!meta.tutorial && run.day === 1 && run.orderIdx === 0) { hintStage = 1; hint(`조각을 끌어 수틀에 놓으세요. 조각은 ${run.order.patchesLeft}개뿐이에요`); }
+  if (!meta.tutorial && run.day === 1 && run.orderIdx === 0) { hintStage = 1; hint(`조각을 끌어 수틀에 놓으세요. 이번 주문 조각은 모두 ${run.order.patchesLeft}개예요`); }
   else if (run.order.boss === 'knots' && teachOnce('knots', '매듭이 든 줄도 나머지를 채우면 매듭째 풀려요', 4200)) { /* taught */ }
   else if (run.order.boss === 'ink' && teachOnce('ink', '먹물: 흑색 칸은 지워도 점을 주지 않아요. 다른 색 줄을 노리세요', 4200)) { /* taught */ }
   else if (run.order.boss === 'strict' && teachOnce('strict', '깐깐한 눈: 모든 배수가 절반이에요. 목표가 그만큼 낮아요', 4200)) { /* taught */ }
@@ -647,7 +655,7 @@ function showPreview(h) {
   const after = now + pv.score;
   el.ghost.style.width = Math.min(100, (after / o.target) * 100) + '%';
   el.ghost.classList.toggle('win', pv.completes);
-  el.proj.textContent = `→ ${fmt(after)}`;
+  el.proj.textContent = `→ ${fmtScore(after)}`;
   if (pv.lines.length) {
     setStreak(pv.streak, 'up');
     el.order.classList.add('previewing');
@@ -700,12 +708,6 @@ async function playEvents(events) {
       case 'place':
         lastPlaced = ev;
         view.placePiece(ev);
-        el.patches.textContent = run.order.patchesLeft;
-        bump(el.patches);
-        if (run.phase === 'play' && run.order.patchesLeft <= 5 && run.order.patchesLeft > 0 && !patchWarned) {
-          patchWarned = true;
-          toast(`조각이 ${run.order.patchesLeft}개 남았어요`, 1800);
-        }
         sfx.drop(SHAPE_BY_ID[ev.piece.shape].size);
         haptic(8);
         break;
@@ -720,6 +722,11 @@ async function playEvents(events) {
         break;
       case 'tray': {
         view.setTray(run.tray, fitsOf());
+        const toCome = setPatches();
+        if (run.phase === 'play' && toCome <= 3 && !patchWarned) {
+          patchWarned = true;
+          toast(toCome ? `남은 조각 ${toCome}개` : '손에 든 조각이 마지막이에요', 1800);
+        }
         const t = run.tray.filter(Boolean);
         if (t.length >= 2 && t.every((p) => p.color === t[0].color)) teachOnce('monoTray', '같은 색 조각들! 지운 줄이 모두 한 색이면 배수 ×2 (오목누비)', 4000);
         break;
@@ -929,11 +936,12 @@ async function winSequence() {
   view.confetti(80);
   const leftLine = run.reward && run.reward.lines.find((l) => l.kind === 'leftover');
   const left = leftLine ? leftLine.coins : 0;
-  const cr = el.coins.getBoundingClientRect();
+  // the patches left over turn into coins: they leave the patches counter for the finished order
+  const pr = el.statPatches.getBoundingClientRect();
   const ar = app.getBoundingClientRect();
   for (let i = 0; i < left; i++) {
     setTimeout(() => {
-      view.flyTo(mid.x, mid.y + view.cell * 4.5, cr.left - ar.left + 8, cr.top - ar.top + 8, '#e7b33a', 2);
+      view.flyTo(pr.left - ar.left + pr.width / 2, pr.top - ar.top + pr.height / 2, mid.x, mid.y, '#e7b33a', 2);
       sfx.coin(i);
     }, 450 + i * 110);
   }
@@ -978,8 +986,6 @@ function showReward() {
     sfx.buy();
     haptic(15);
     persist();
-    el.coins.textContent = run.coins;
-    bump(el.coins);
     if (ev.some((e) => e.type === 'victory')) { recordRun(true); persist(); showEnd(true); }
     else if (run.phase === 'gift') showGift();
     else showShop();
@@ -1371,12 +1377,12 @@ function refreshClaimBadge() {
 function showHow(back) {
   const html = `<div class="eyebrow">하는 방법</div><h2>조각 누비기</h2>
     <div class="how">
-      <p><b>조각 놓기</b> — 아래 조각을 끌어 수틀에 놓아요. 놓을 때마다 남은 조각이 하나씩 줄어요.</p>
+      <p><b>조각 놓기</b> — 아래 조각을 끌어 수틀에 놓아요. 세 개를 다 놓으면 새 조각이 나오고, 남은 조각은 아직 나오지 않은 조각 수예요.</p>
       <p><b>줄 누비기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 누벼지고 점수가 나요.</p>
       <p><b>바느질 족보</b> — 지운 모양에 따라 기법이 정해져요. 홈질(한 줄), 겹누비(같은 방향 두 줄), 십자수(가로+세로), 세누비(세 줄 이상), 마무리(판을 다 비움). 기법마다 점과 배수가 정해져 있어요.</p>
       <p><b>한 색 줄</b> — 한 줄을 한 가지 색으로 채워 지우면 족보에 이름이 하나 더 붙고 배수가 커져요. 지운 줄이 모두 한 색이면 오목누비 ×2, 두 줄 중 하나처럼 일부만 한 색이면 납작누비 ×1.5.</p>
       <p><b>점 × 배수</b> — 족보의 점에 지운 칸마다 5를 더하고, 연달아 지우면 배수가 올라요. 도구가 점과 배수를 더 키워요.</p>
-      <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 놓을 데가 없으면 「조각 바꾸기」로 트레이를 새로 받아요.</p>
+      <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 놓을 데가 없으면 「조각 바꾸기」로 손에 든 조각만 새로 받아요.</p>
       <p><b>장터</b> — 품삯으로 바느질 도구와 바느질 본을 사요. 본은 족보 레벨을 올려 줘요. 한 족보를 키워 빌드를 만들어 보세요. 돈을 모아 두면 ${R.INTEREST_PER}냥마다 이자가 1냥(최대 ${R.INTEREST_CAP}냥) 붙어요.</p>
     </div>
     <div class="actions"><button class="btn btn-seal" id="back" data-autofocus>알겠어요</button></div>`;

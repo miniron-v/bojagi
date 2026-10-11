@@ -149,9 +149,9 @@ b, .num { font-variant-numeric: tabular-nums; }
 
 .order { position: relative; margin: 8px 16px 0; padding: 16px 13px 11px; box-shadow: 0 6px 16px #0005; }
 .order::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: var(--saekdong); border-radius: var(--cut) var(--cut) 0 0; }
-.score-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.score-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; white-space: nowrap; }
 .score { font-family: var(--font-display); font-weight: 800; font-size: 32px; line-height: 1; display: inline-block; transform-origin: left center; }
-.target { color: var(--muted); font-size: 14px; }
+.target { flex: none; color: var(--muted); font-size: 14px; }
 .target b { font-family: var(--font-display); color: var(--thread); font-size: 17px; }
 .bar { position: relative; height: 12px; margin-top: 9px; border-radius: 2px; background: #00000040; overflow: hidden; box-shadow: inset 0 1px 2px #0008; }
 .bar .fill, .bar .ghost { position: absolute; inset: 0 auto 0 0; width: 0; }
@@ -164,7 +164,6 @@ b, .num { font-variant-numeric: tabular-nums; }
 .stat { display: flex; align-items: center; gap: 5px; padding: 5px 9px; font-size: 13px; color: var(--muted); white-space: nowrap; background-color: #ffffff0a; }
 .stat b { font-family: var(--font-display); color: var(--thread); font-size: 17px; }
 .stat svg { width: 16px; height: 16px; }
-.stat.coins b { color: var(--gold-text); }
 .stat.seam-tag { cursor: pointer; }
 .stat.seam-tag b { font-size: 14px; }
 .stat.streak { margin-left: auto; background-color: #e2b54a22; color: var(--gold-text); transition: opacity .2s; }

@@ -199,22 +199,24 @@ function randomPiece(run, color) {
   return { shape: shape.id, color: color || pick(run.rng, COLORS) };
 }
 
-function refillTray(run) {
-  const count = Math.min(3, run.order.patchesLeft);
+/**
+ * Deals new patches into the given tray slots (default: a fresh tray of up to three, as many as
+ * the order has left). Slots not listed keep what they hold.
+ */
+function refillTray(run, slots = [0, 1, 2].slice(0, Math.min(3, run.order.patchesLeft))) {
   let tray;
   // Guarantee at least one placeable patch; jams should come from play, not from the dealer.
   for (let attempt = 0; attempt < 30; attempt++) {
-    tray = [];
+    tray = [null, null, null];
     // Half the trays share one color so single-color seams are a plan, not a miracle.
     const shared = next(run.rng) < MONO_TRAY_CHANCE ? pick(run.rng, COLORS) : null;
-    for (let i = 0; i < count; i++) tray.push(randomPiece(run, shared));
-    if (tray.some((p) => fitsAnywhere(run.board, SHAPE_BY_ID[p.shape]))) break;
+    for (const i of slots) tray[i] = randomPiece(run, shared);
+    if (tray.some((p) => p && fitsAnywhere(run.board, SHAPE_BY_ID[p.shape]))) break;
     if (attempt === 29) {
       // Last resort: a single dot if there is any empty cell.
-      if (run.board.some((v) => v === null)) tray[0] = { shape: 'dot_0', color: pick(run.rng, COLORS) };
+      if (run.board.some((v) => v === null)) tray[slots[0]] = { shape: 'dot_0', color: pick(run.rng, COLORS) };
     }
   }
-  while (tray.length < 3) tray.push(null);
   run.tray = tray;
 }
 
@@ -401,9 +403,10 @@ export function place(run, i, r, c) {
 }
 
 export function discard(run) {
-  if (run.phase !== 'play' || run.order.discardsLeft <= 0) return [];
+  if (run.phase !== 'play' || run.order.discardsLeft <= 0 || !run.tray.some(Boolean)) return [];
   run.order.discardsLeft -= 1;
-  refillTray(run);
+  // only the patches in hand are swapped: two left in slots 1 and 3 come back as two new ones there
+  refillTray(run, run.tray.flatMap((p, i) => (p ? [i] : [])));
   return [{ type: 'discard' }, { type: 'tray' }, ...checkStuck(run)];
 }
 
@@ -415,7 +418,7 @@ function winOrder(run) {
   const lines = [];
   lines.push({ label: ORDER_KINDS[o.kind].name + ' 완료', coins: ORDER_KINDS[o.kind].reward });
   const left = Math.min(LEFTOVER_CAP, o.patchesLeft);
-  if (left > 0) lines.push({ label: `남은 조각 ${o.patchesLeft}개`, coins: left, kind: 'leftover' });
+  if (left > 0) lines.push({ label: `안 쓴 조각 ${o.patchesLeft}개`, coins: left, kind: 'leftover' });
   const interest = Math.min(INTEREST_CAP, Math.floor(run.coins / INTEREST_PER));
   if (interest > 0) lines.push({ label: `이자 (${INTEREST_PER}냥마다 1냥)`, coins: interest, kind: 'interest' });
   run.tools.forEach((t) => {
