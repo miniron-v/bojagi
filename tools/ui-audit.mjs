@@ -266,6 +266,9 @@ await browser.close();
 
 if (problems.length) {
   console.log(problems.join('\n'));
+  // in GitHub Actions also raise each problem as an annotation: they show on the run page and
+  // can be read through the API even where the raw log cannot be downloaded
+  if (process.env.GITHUB_ACTIONS) for (const p of problems.slice(0, 40)) console.log(`::error title=UI audit::${p.replace(/\n/g, ' ')}`);
   console.log(`\nUI audit: ${problems.length} problem(s)`);
   process.exit(1);
 }
