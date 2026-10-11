@@ -24,7 +24,8 @@ export const SEAMS = [
   { id: 'single', kind: 'shape', short: '1줄', name: '홈질', chips: 30, mult: 1, lvChips: 0, lvMult: 0, how: '한 줄', fixed: true },
   // add-ons: rare ones add chips and mult; the common ones add chips only (a mult on top of the
   // fallback hand's ×1 would multiply most of the game's clears)
-  { id: 'perfect', kind: 'addon', short: '판 비움', name: '마무리', chips: 130, mult: 7, lvChips: 40, lvMult: 3, how: '줄을 지워 수틀을 완전히 비우기' },
+  // 마무리 multiplies like a colour finish (it is harder to make than one colour), so it has no level
+  { id: 'perfect', kind: 'addon', short: '판 비움', name: '마무리', chips: 0, mult: 0, lvChips: 0, lvMult: 0, xmult: 3, fixed: true, how: '줄을 지워 수틀을 완전히 비우기' },
   { id: 'cross', kind: 'addon', short: '가로+세로', name: '십자수', chips: 50, mult: 3, lvChips: 25, lvMult: 2, how: '가로와 세로를 함께' },
   { id: 'whole', kind: 'addon', short: '조각째 지움', name: '시침질', chips: 10, mult: 0, lvChips: 10, lvMult: 0, how: '놓은 조각이 남김없이 지워지게' },
   { id: 'edge', kind: 'addon', short: '가장자리 줄', name: '감침질', chips: 10, mult: 0, lvChips: 7, lvMult: 0, how: '맨 바깥 줄을 지우기' },
@@ -36,7 +37,7 @@ export const SEAM_IDS = SEAMS.map((s) => s.id);
 export const SHAPE_IDS = SEAMS.filter((s) => s.kind === 'shape').map((s) => s.id);
 export const ADDON_IDS = SEAMS.filter((s) => s.kind === 'addon').map((s) => s.id);
 export const PATTERN_PRICE = 3;
-// every name but the fallback hand has a pattern paper
+// every name that levels has a pattern paper (not 홈질, not 마무리)
 export const PATTERN_SEAMS = SEAM_IDS.filter((id) => !SEAM_BY_ID[id].fixed);
 
 const EDGE = [0, N - 1];

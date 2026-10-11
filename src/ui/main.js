@@ -367,6 +367,7 @@ const addonTag = (id, lv = true) => `<span class="addtag">+ ${SEAM_BY_ID[id].nam
 /** A seam's value as it reads in tables: shapes "점 × 배수", add-ons "+점 +배수" (the common ones add chips only). */
 function seamValHtml(id, v) {
   if (SEAM_BY_ID[id].kind === 'shape') return `<span class="c">${v.chips}</span> × <span class="m">${v.mult}</span>`;
+  if (SEAM_BY_ID[id].xmult) return `<span class="m">×${SEAM_BY_ID[id].xmult}</span>`;
   return `<span class="c">+${v.chips}</span>${v.mult ? ` <span class="m">+${v.mult}</span>` : ''}`;
 }
 const seamLabel = (id) => `${SEAM_BY_ID[id].name} ${lvTag(id)}`.trim();
@@ -917,9 +918,11 @@ function startTally(ev) {
       } else if (st.src === 'addon') {
         // an add-on joins the head ("겹누비 + 감침질") and adds its chips and mult
         const sm = SEAM_BY_ID[st.seam];
-        chips += st.chips;
-        mult += st.mult;
-        label = `${sm.name} ${sm.short} ${lvTag(st.seam)} · 점 +${st.chips}${st.mult ? ` 배수 +${st.mult}` : ''}`;
+        chips += st.chips || 0;
+        mult += st.mult || 0;
+        if (st.xmult) mult *= st.xmult;
+        label = st.xmult ? `${sm.name} ${sm.short} · 배수 ×${st.xmult}`
+          : `${sm.name} ${sm.short} ${lvTag(st.seam)} · 점 +${st.chips}${st.mult ? ` 배수 +${st.mult}` : ''}`;
         beat = 340;
         const head = $('.seam', tally);
         if (head) {
@@ -1126,14 +1129,15 @@ function showSeams(back) {
         <span class="cond">${sm.how}${run && counts[sm.id] ? ` <span class="cnt">이번 판 ${counts[sm.id]}번</span>` : ''}</span></div>`;
   };
   const html = `<h2>바느질 족보</h2>
-    <p class="lead">지운 모양 하나에 덧붙는 족보가 모두 더해져요. 홈질은 자라지 않으니, 본으로 다른 족보를 키워 보세요.</p>
+    <p class="lead">지운 모양 하나에 덧붙는 족보가 모두 붙어요. 홈질은 자라지 않으니, 본으로 다른 족보를 키워 보세요.</p>
     <div class="section-label"><span><b>모양</b> 한 번에 하나, 많이 지운 방향의 줄로 정해요</span></div>
     <div class="seam-table">${SHAPE_IDS.map((id) => row(SEAM_BY_ID[id])).join('')}</div>
-    <div class="section-label"><span><b>덧붙는 족보</b> 해당하면 모두 더해져요</span></div>
-    <div class="seam-table">${ADDON_IDS.map((id) => row(SEAM_BY_ID[id])).join('')}
-      <div class="seam-row bonus"><span class="ic">${seamIcon('mono')}</span><span class="nm">한 색 줄 <small>모든 족보에</small></span>
+    <div class="section-label"><span><b>덧붙는 족보</b> 해당하면 모두 붙어요</span></div>
+    <div class="seam-table">${row(SEAM_BY_ID[ADDON_IDS[0]])}
+      <div class="seam-row bonus"><span class="ic">${seamIcon('mono')}</span><span class="nm">한 색 줄</span>
         <span class="val"><span class="m">×1~2</span></span>
-        <span class="cond">마지막에 곱해져요. 모두 한 색이면 오목누비 ×2, 일부만 한 색이면 납작누비(한 색 줄 비율만큼)</span></div></div>`;
+        <span class="cond">마지막에 곱해져요. 모두 한 색이면 오목누비 ×2, 일부만 한 색이면 납작누비(한 색 줄 비율만큼)</span></div>
+      ${ADDON_IDS.slice(1).map((id) => row(SEAM_BY_ID[id])).join('')}</div>`;
   openModal(html, { close: () => (back ? back() : resumePhase()) });
 }
 
@@ -1487,7 +1491,7 @@ function showHow(back) {
     <div class="how">
       <p><b>조각 놓기</b> — 아래 조각을 끌어 수틀에 놓아요. 세 개를 다 놓으면 새 조각이 나오고, 남은 조각은 아직 나오지 않은 조각 수예요.</p>
       <p><b>줄 누비기</b> — 가로나 세로 한 줄을 채우면 바늘이 지나가며 줄이 누벼지고 점수가 나요.</p>
-      <p><b>바느질 족보</b> — 지운 줄의 모양이 족보가 돼요. 모양은 하나: 홈질(한 줄), 겹누비(붙은 두 줄), 드문누비(떨어진 두 줄), 세누비(같은 방향 세 줄 이상). 여기에 덧붙는 족보가 모두 더해져요: 감침질(가장자리 줄), 등솔(가운데 줄), 시침질(놓은 조각이 통째로 지워짐), 십자수(가로+세로), 마무리(판을 다 비움).</p>
+      <p><b>바느질 족보</b> — 지운 줄의 모양이 족보가 돼요. 모양은 하나: 홈질(한 줄), 겹누비(붙은 두 줄), 드문누비(떨어진 두 줄), 세누비(같은 방향 세 줄 이상). 여기에 덧붙는 족보가 모두 붙어요: 마무리(판을 다 비움, 배수 ×3), 십자수(가로+세로), 시침질(놓은 조각이 통째로 지워짐), 감침질(가장자리 줄), 등솔(가운데 줄).</p>
       <p><b>한 색 줄</b> — 한 줄을 한 가지 색으로 채워 지우면 족보에 이름이 하나 더 붙고 배수가 커져요. 지운 줄이 모두 한 색이면 오목누비 ×2, 두 줄 중 하나처럼 일부만 한 색이면 납작누비 ×1.5.</p>
       <p><b>점 × 배수</b> — 족보의 점에 지운 칸마다 5를 더하고, 연달아 지우면 배수가 올라요. 도구가 점과 배수를 더 키워요.</p>
       <p><b>주문</b> — 조각이 떨어지기 전에 목표 점수를 넘기면 완료. 놓을 데가 없으면 「조각 바꾸기」로 손에 든 조각만 새로 받아요.</p>

@@ -262,23 +262,27 @@ test('seams: add-ons are earned together, each from what can be seen', async () 
   assert.deepEqual(a([], [], { pieceCells: [[1, 1]] }), []);
 });
 
-test('seams: every add-on adds its chips and mult, so an add-on never lowers the score', async () => {
+test('seams: add-ons add their chips and mult (마무리 multiplies ×3), so an add-on never lowers the score', async () => {
   const { seamValue } = await import('../src/core/seams.js');
-  // the common cases keep their old values: 홈질 + 십자수 = 80 × 4, one line clearing the hoop = 160 × 8
+  // 홈질 + 십자수 = 80 × 4 (the old 십자수)
   const cross = evaluate(baseCtx({ ...L([1], [2]), cleared: [] }), []);
   assert.deepEqual([cross.chips, cross.mult], [80, 4]);
+  // 마무리 multiplies the mult ×3, with no level, after the tools and before the colour finish
   const perfect = evaluate(baseCtx({ perfect: true, cleared: [] }), []);
   assert.deepEqual([perfect.seam, perfect.addons], ['single', ['perfect']]);
-  assert.deepEqual([perfect.chips, perfect.mult], [160, 8]);
-  // 마무리 on top of a leveled 겹누비 adds to it: no 역전 at any level of either
-  for (const dl of [1, 5, 10]) for (const pl of [1, 3]) {
-    const levels = { double: dl, perfect: pl };
+  assert.deepEqual([perfect.chips, perfect.mult], [30, 3]);
+  const order = evaluate(baseCtx({ perfect: true, monoLines: 1, cleared: [] }), [makeTool('lamp')]).steps.map((st) => st.src);
+  assert.deepEqual(order.slice(-2), ['addon', 'mono'], '마무리 ×3 → 한 색 줄');
+  assert.ok(order.indexOf('lamp') < order.indexOf('addon'));
+  assert.ok(!PATTERN_SEAMS.includes('perfect'), '레벨이 없으니 본도 없음');
+  // 마무리 on top of a leveled 겹누비 triples it: no 역전 at any level
+  for (const dl of [1, 5, 10]) {
+    const levels = { double: dl, perfect: 4 };
     const plain = evaluate(baseCtx({ ...L([1, 2]), levels, cleared: [] }), []);
     const done = evaluate(baseCtx({ ...L([1, 2]), levels, perfect: true, cleared: [] }), []);
     assert.equal(done.seam, 'double');
-    assert.ok(done.score > plain.score, `겹누비 ${dl} + 마무리 ${pl}`);
-    const v = seamValue('perfect', pl);
-    assert.deepEqual([done.chips - plain.chips, done.mult - plain.mult], [v.chips, v.mult]);
+    assert.equal(done.chips, plain.chips);
+    assert.equal(done.mult, plain.mult * 3, `겹누비 ${dl} + 마무리`);
   }
   // every add-on's value is non-negative at every level
   for (const id of PATTERN_SEAMS) for (let lv = 1; lv <= 12; lv++) {
