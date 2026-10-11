@@ -173,8 +173,10 @@ function inspect() {
       range.selectNodeContents(t);
       for (const rc of range.getClientRects()) if (rc.width > 0) tops.push(rc);
     }
-    // two boxes are on different lines when one starts below the other's middle
-    const wraps = tops.some((a) => tops.some((b) => b.top > a.top + a.height / 2));
+    // two boxes are on different lines when they barely overlap vertically. (Not "one starts below
+    // the other's middle": a small, shrunk-to-fit number sits on the same baseline as a big one and
+    // its top is lower, which that test read as a second line — a CI-only false failure.)
+    const wraps = tops.some((a) => tops.some((b) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) < Math.min(a.height, b.height) / 2));
     if (wraps) bad.push(`wraps onto a second line: ${path(row)}`);
   }
   return [...new Set(bad)];
