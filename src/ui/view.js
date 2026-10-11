@@ -41,7 +41,9 @@ export class View {
     this.boss = null;
     this.hoopCache = null;
     this.resize = this.resize.bind(this);
-    const ro = new ResizeObserver(() => this.resize());
+    // never re-lay the hoop out under a dragged patch: a size change mid-drag would move the cells
+    // under the finger, change the preview, and could feed back into the layout (a jitter loop)
+    const ro = new ResizeObserver(() => { if (this.drag) this.resizeLater = true; else this.resize(); });
     ro.observe(app);
     ro.observe(stage);
     this.watchDpr();
@@ -154,7 +156,7 @@ export class View {
     const end = (e) => {
       if (!this.drag || e.pointerId !== this.drag.id) return;
       const d = this.drag;
-      this.drag = null;
+      this.dragEnded();
       this.handlers.hover(null);
       if (d.valid && e.type === 'pointerup' && this.enabled && this.handlers.drop(d.i, d.anchor.r, d.anchor.c, d.piece)) return;
       // fly back to the tray
@@ -172,9 +174,15 @@ export class View {
   cancelDrag() {
     if (!this.drag) return;
     const d = this.drag;
-    this.drag = null;
+    this.dragEnded();
     this.handlers.hover(null);
     this.returning = { i: d.i, x: d.x, y: d.y - d.lift, t0: performance.now(), scale: 1 };
+  }
+
+  /** Ends a drag and applies any layout change that waited for it. */
+  dragEnded() {
+    this.drag = null;
+    if (this.resizeLater) { this.resizeLater = false; this.resize(); }
   }
 
   hitSlot(x, y) {

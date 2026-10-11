@@ -634,26 +634,6 @@ test('finish: old journal patches with colour seams draw as a finish', () => {
   assert.deepEqual(upgradePatch({ color: 'red', seam: 'cross', finish: 'ridge' }), { color: 'red', seam: 'cross', finish: 'ridge' });
 });
 
-test('fmtScore: exact up to six digits, then 만/억 rounded down so a score never reads as done early', async () => {
-  const { fmtScore } = await import('../src/ui/format.js');
-  assert.equal(fmtScore(999999), '999,999');
-  assert.equal(fmtScore(1234567), '123.4만');
-  assert.equal(fmtScore(9999999), '999.9만');
-  assert.equal(fmtScore(12345678), '1,234만');
-  assert.equal(fmtScore(98765432), '9,876만');
-  assert.equal(fmtScore(123456789), '1.23억');
-  assert.equal(fmtScore(100000000), '1억');
-  assert.equal(fmtScore(113000000), '1.13억', 'no floating-point drop');
-  assert.equal(fmtScore(201000000), '2.01억');
-  for (let n = 1e6; n < 1e10; n = Math.floor(n * 1.37) + 1) {
-    const v = fmtScore(n);
-    const back = v.endsWith('억') ? parseFloat(v) * 1e8 : parseFloat(v.replace(/,/g, '')) * 1e4;
-    assert.ok(back <= n + 1e-6 && n - back < (v.endsWith('억') ? 1e6 : n >= 1e7 ? 1e4 : 1e3), `${n} → ${v}`);
-  }
-  // 9,879,999 is one short of the 988만 target: it must not read as 988만
-  assert.notEqual(fmtScore(9879999), fmtScore(9880000));
-});
-
 test('discard swaps only the patches in hand: an emptied slot stays empty', () => {
   const run = R.newRun({ seed: 21 });
   R.beginOrder(run);

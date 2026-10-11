@@ -80,7 +80,8 @@ for (let k = 0; k < MOVES * 3 && moves < MOVES; k++) {
   if (phase !== 'play' || busy) { await page.waitForTimeout(150); continue; }
   const m = await bestMove();
   if (!m) { await page.waitForTimeout(150); continue; }
-  if (m.stuck) { await page.click('#btn-discard'); await page.waitForTimeout(400); continue; }
+  // the button pulses (urge) while stuck, which Playwright reads as unstable: click through it
+  if (m.stuck) { await page.click('#btn-discard', { force: true }); await page.waitForTimeout(400); continue; }
   // piece dimensions from the shape table exposed through preview cells
   const wh = await page.evaluate((id) => {
     const cells = window.__bojagi.shapes[id].cells;

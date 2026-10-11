@@ -14,7 +14,7 @@ import { drawQuilt, shareText, stitchIn, patchCaption, keepsakeOf } from './quil
 import * as store from './store.js';
 import { lockedIds, isUnlocked, progress } from '../core/unlocks.js';
 import { recordRun as writeRecords, dailyStreakAlive } from '../core/records.js';
-import { fmt, fmtBig, fmtScore, fmtMult, kindName, dayName, bestDayLabel } from './format.js';
+import { fmt, fmtBig, fmtMult, kindName, dayName, bestDayLabel } from './format.js';
 import { SEAMS, SEAM_BY_ID, FINISH_BY_ID, seamValue, PATTERN_PRICE } from '../core/seams.js';
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -186,7 +186,8 @@ function renderHud() {
   el.dayMax.hidden = run.day > R.DAYS;
   el.kind.textContent = kindName(o.kind) + (run.mode === 'daily' ? ' · 오늘의 의뢰' : '');
   el.kind.classList.toggle('boss', !!o.boss);
-  el.target.textContent = fmtScore(o.target);
+  el.target.textContent = fmt(o.target);
+  fitScoreRow();
   setPatches();
   el.seamName.textContent = seamLabel(signatureSeam());
   el.discards.textContent = o.discardsLeft;
@@ -211,6 +212,43 @@ function setStreak(n, state = '') {
   $('b', el.streak).textContent = n;
 }
 
+/**
+ * Numbers keep every digit as they grow; when the score row runs out of room the font shrinks
+ * instead (the row's height is fixed in CSS, so nothing below it ever moves). The target keeps at
+ * most half the row, the score takes the rest, and while aiming the arrival score fits into what
+ * is left; if it would get too small to read it steps aside (the bar's ghost still shows it).
+ */
+let fitKey = '';
+function fitScoreRow() {
+  const row = el.score.closest('.score-row');
+  const tgt = el.target.parentNode;
+  const proj = el.proj;
+  const key = `${row.clientWidth}|${el.score.textContent.length}|${el.target.textContent.length}|${proj.textContent.length}`;
+  if (key === fitKey) return;
+  fitKey = key;
+  const shrink = (node, room, min = 0) => {
+    node.style.fontSize = '';
+    node.style.visibility = '';
+    const natural = node.scrollWidth;
+    if (natural <= room) return natural;
+    const k = room / natural;
+    if (k < min) { node.style.visibility = 'hidden'; return 0; }
+    node.style.fontSize = `${Math.floor(parseFloat(getComputedStyle(node).fontSize) * k * 2) / 2}px`;
+    return node.scrollWidth;
+  };
+  const gap = 8;
+  const w = row.clientWidth;
+  const tw = shrink(tgt, w * 0.5);
+  const sw = shrink(el.score, w - tw - gap);
+  if (proj.textContent) shrink(proj, w - tw - sw - gap * 2, 0.6);
+}
+
+// the fit depends on the row's width, the size variable (media queries) and the loaded web font,
+// none of which the text-keyed cache sees: refit whenever one of them may have changed
+const refitScoreRow = () => { fitKey = ''; if (run && run.order) fitScoreRow(); };
+addEventListener('resize', refitScoreRow);
+if (document.fonts) { document.fonts.ready.then(refitScoreRow); document.fonts.addEventListener('loadingdone', refitScoreRow); }
+
 function setBar() {
   const o = run.order;
   const shown = o.score - pendingScore;
@@ -226,7 +264,8 @@ function animateScore() {
     const diff = target - shownScore;
     shownScore += Math.sign(diff) * Math.max(1, Math.ceil(Math.abs(diff) * 0.16));
     if ((diff > 0 && shownScore > target) || (diff < 0 && shownScore < target)) shownScore = target;
-    el.score.textContent = fmtScore(shownScore);
+    el.score.textContent = fmt(shownScore);
+    fitScoreRow();
   }
 }
 requestAnimationFrame(animateScore);
@@ -465,7 +504,8 @@ function enterGame() {
   tallyJob = null;
   showScreen('game');
   shownScore = run.order ? run.order.score : 0;
-  el.score.textContent = fmtScore(shownScore);
+  el.score.textContent = fmt(shownScore);
+  fitScoreRow();
   el.tally.classList.remove('show', 'preview');
   clearPeek();
   view.setBoard(run.board);
@@ -655,7 +695,8 @@ function showPreview(h) {
   const after = now + pv.score;
   el.ghost.style.width = Math.min(100, (after / o.target) * 100) + '%';
   el.ghost.classList.toggle('win', pv.completes);
-  el.proj.textContent = `→ ${fmtScore(after)}`;
+  el.proj.textContent = `→ ${fmt(after)}`;
+  fitScoreRow();
   if (pv.lines.length) {
     setStreak(pv.streak, 'up');
     el.order.classList.add('previewing');

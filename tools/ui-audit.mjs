@@ -6,6 +6,8 @@
 //   3. no text is cut off or ellipsized inside a box that hides overflow
 //   4. siblings laid out by a flex/grid container do not overlap
 //   5. a row marked data-one-line (the order card's score row) never wraps onto a second line
+//   6. aiming never moves the layout: the order card and the hoop's stage keep their size and place
+//      between idle and a line-clearing preview, in states that show or hide parts of the card
 // Any violation fails the run (exit code 1), so `npm run audit:ui` can gate a deploy.
 // Usage: node tools/ui-audit.mjs [--shots]   (screenshots go to shots/audit/)
 import { chromium } from 'playwright-core';
@@ -178,7 +180,51 @@ function inspect() {
   return [...new Set(bad)];
 }
 
+// rule 6: one line-clearing aim per state; the preview may only change what is drawn, not sizes
+const AIM_STATES = {
+  'streak 0': '', 'streak 1': 'run.order.streak = 1;', 'streak 3': 'run.order.streak = 3;',
+  boss: "run.order.boss = 'knots';",
+  'big numbers': 'run.order.score = 87654321; run.order.target = 987654321;',
+  'huge numbers': 'run.order.score = 123456789012; run.order.target = 987654321098;',
+  'mixed colours': "run.board[0] = 'blue';",
+};
+async function aimShift(browser, w, h, src) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
+  const page = await ctx.newPage();
+  await routeFonts(page);
+  await page.goto(url);
+  await page.waitForTimeout(200);
+  await page.evaluate((src) => {
+    localStorage.setItem('bojagi.meta.v1', JSON.stringify({ runs: 3, tutorial: true, tallyTaught: true, seen: { streak: 1, monoTray: 1, knots: 1 } }));
+    const { R, ui } = window.__bojagi;
+    const run = R.newRun({ seed: 7 });
+    R.beginOrder(run);
+    run.board = run.board.map(() => null);
+    for (let c = 0; c < 6; c++) run.board[c] = 'red';
+    run.tray = [{ shape: 'i2_0', color: 'red' }, null, null];
+    new Function('run', src)(run);
+    localStorage.setItem('bojagi.run.v1', JSON.stringify(run));
+    ui.continueRun();
+  }, src);
+  await page.waitForTimeout(500);
+  const rects = () => page.evaluate(() => ['.order', '#stage', '.score-row', '.stats'].map((s) => {
+    const r = document.querySelector(s).getBoundingClientRect();
+    return `${s} ${Math.round(r.top * 10) / 10}+${Math.round(r.height * 10) / 10}`;
+  }));
+  const before = await rects();
+  await page.evaluate(() => window.__bojagi.view.handlers.hover({ i: 0, r: 0, c: 6 }));
+  await page.waitForTimeout(250);
+  const previewing = await page.evaluate(() => document.querySelector('.order').classList.contains('previewing'));
+  const after = await rects();
+  await ctx.close();
+  if (!previewing) return ['the aim did not open a forecast'];
+  return before.map((b, i) => (b === after[i] ? null : `${b} → ${after[i].split(' ')[1]}`)).filter(Boolean);
+}
+
 for (const [w, h] of VIEWPORTS) {
+  for (const [state, src] of Object.entries(AIM_STATES)) {
+    for (const f of await aimShift(browser, w, h, src)) problems.push(`[${w}×${h}] aiming (${state}): layout moved: ${f}`);
+  }
   for (const [name, sc] of Object.entries(SCENARIOS)) {
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
     const page = await ctx.newPage();
@@ -223,4 +269,4 @@ if (problems.length) {
   console.log(`\nUI audit: ${problems.length} problem(s)`);
   process.exit(1);
 }
-console.log(`UI audit: ${VIEWPORTS.length} sizes × ${Object.keys(SCENARIOS).length} screens, no problems`);
+console.log(`UI audit: ${VIEWPORTS.length} sizes × ${Object.keys(SCENARIOS).length} screens + ${Object.keys(AIM_STATES).length} aiming states, no problems`);
