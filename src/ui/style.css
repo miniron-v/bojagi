@@ -551,7 +551,7 @@ b, .num { font-variant-numeric: tabular-nums; }
 @keyframes winGlow { 50% { opacity: .55; } }
 
 .peek {
-  position: absolute; inset: -3px -3px; display: flex; z-index: 2; align-items: center; gap: 10px; padding: 0 10px;
+  position: absolute; inset: -3px -3px -7px; display: flex; z-index: 2; align-items: center; gap: 10px; padding: 0 10px;
   border-radius: 3px; background: var(--deep); outline: 1.5px dashed var(--stitch); outline-offset: -4px;
   opacity: 0; transform: translateY(6px); transition: opacity .12s, transform .12s; pointer-events: none;
 }
@@ -653,7 +653,7 @@ b, .num { font-variant-numeric: tabular-nums; }
 .fintag-ridge { background: var(--gold); color: #2a1b05; }
 .fintag-flat { box-shadow: inset 0 0 0 1.2px var(--gold); color: var(--gold-text); }
 .pk-seam { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
-.pk-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.pk-name { line-height: 1.05; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .seam-row.bonus { outline: 1.5px dashed #e2b54a66; outline-offset: -4px; }
 
 /* narrow phones: the forecast keeps the seam, the colour bonus and the gain (kept last so it wins) */
